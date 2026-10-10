@@ -165,7 +165,8 @@
         <input type="hidden" id="layout-id" />
         <label>Code <input id="layout-code" required placeholder="e.g. A" /></label>
         <label>Description <textarea id="layout-description" rows="2" placeholder="e.g. 3 bed, 2 bath, double garage"></textarea></label>
-        <p class="muted tiny">A drawing/image for each layout can be uploaded in a later phase.</p>
+        <label>Drawing / floor plan <input id="layout-drawing-input" type="file" accept="image/*" /></label>
+        <div id="layout-drawing-preview" class="img-preview"></div>
         <p id="layout-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
@@ -316,7 +317,8 @@
             <option value="no">No</option>
           </select>
         </label>
-        <p class="muted tiny">A pet photo can be uploaded in a later phase.</p>
+        <label>Photo <input id="pet-photo-input" type="file" accept="image/*" /></label>
+        <div id="pet-photo-preview" class="img-preview"></div>
         <p id="pet-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
