@@ -314,3 +314,12 @@ tbody tr:hover { background: #f9fafb; }
 /* Clickable unit chip (global list screens) */
 .chip-btn { border: none; cursor: pointer; font-family: inherit; }
 .chip-btn:hover { background: #dbeafe; }
+
+/* ===== Ticket status pills ===== */
+.pill.ticket-create    { background: #e5e7eb; color: #374151; }
+.pill.ticket-sent      { background: #dbeafe; color: #1d4ed8; }
+.pill.ticket-busy      { background: #fef3c7; color: #d97706; }
+.pill.ticket-waiting   { background: #ede9fe; color: #7c3aed; }
+.pill.ticket-complete  { background: #dcfce7; color: #16a34a; }
+.pill.ticket-cancelled { background: #fee2e2; color: #dc2626; }
+.pill.ticket-parked    { background: #f3f4f6; color: #6b7280; }

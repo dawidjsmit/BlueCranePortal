@@ -50,6 +50,9 @@ in the SQL Editor the same way:
   types (trustee-managed), tickets (status + assigned role), a feedback
   conversation, ticket & feedback photos, and all their RLS. Run this
   **after** `10a`. (The old `requests` tables are removed in Phase T2.)
+- **`11_phase_t2_drop_requests.sql`** — removes the old `requests` /
+  `request_log` tables now that the app uses Tickets. Run this **after**
+  the Phase T2 app is deployed and you've confirmed tickets work.
 
 If each run says *Success. No rows returned*, you're good.
 
