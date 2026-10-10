@@ -44,6 +44,12 @@ in the SQL Editor the same way:
   tenants can edit tenants/occupants/pets and view photos (no owner data);
   gardeners/service providers view unit basics + photos only. Residents
   only ever see ACTIVE records; trustees keep full access incl. history.
+- **`10a_add_occupant_role.sql`** — adds the 6th login role `occupant`.
+  **Run this FIRST, on its own, and let it finish**, before the next file.
+- **`10_phase_t1_tickets.sql`** — the Ticket system data model: ticket
+  types (trustee-managed), tickets (status + assigned role), a feedback
+  conversation, ticket & feedback photos, and all their RLS. Run this
+  **after** `10a`. (The old `requests` tables are removed in Phase T2.)
 
 If each run says *Success. No rows returned*, you're good.
 
