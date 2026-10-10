@@ -18,6 +18,16 @@
 -- ============================================================
 
 -- ---------- Membership helpers ----------
+-- True if the user has a request assigned to them on this unit
+-- (gardeners / service providers get basics + photo READ access this way).
+create or replace function is_unit_assignee(target_unit uuid)
+returns boolean language sql security definer set search_path = public as $$
+  select exists (
+    select 1 from requests r
+    where r.unit_id = target_unit and r.assignee_id = auth.uid()
+  );
+$$;
+
 -- is_unit_owner already created in 07; redefine to also honour the
 -- owners table profile_id link (belt and braces).
 create or replace function is_unit_owner(target_unit uuid)
@@ -43,9 +53,14 @@ returns boolean language sql security definer set search_path = public as $$
 $$;
 
 -- ============================================================
---  UNITS — basics stay trustee-only to EDIT; residents already read
---  via existing "read units: trustee or member" policy. No change.
+--  UNITS — basics stay trustee-only to EDIT. Reading is allowed for
+--  members (owners/tenants) and now also assignees (gardener/s.p.) who
+--  have a request on the unit, so they can view basics + photos.
 -- ============================================================
+drop policy if exists "read units: trustee or member" on units;
+create policy "read units: trustee or member" on units for select
+  using ( is_trustee() or is_unit_member(id)
+          or is_unit_owner(id) or is_unit_tenant(id) or is_unit_assignee(id) );
 
 -- ============================================================
 --  OWNERS
@@ -145,7 +160,8 @@ create policy "resident delete pets" on pets for delete
 drop policy if exists "read unit photos" on unit_photos;
 create policy "read unit photos" on unit_photos for select
   using ( is_trustee() or is_unit_member(unit_id)
-          or is_unit_owner(unit_id) or is_unit_tenant(unit_id) );
+          or is_unit_owner(unit_id) or is_unit_tenant(unit_id)
+          or is_unit_assignee(unit_id) );
 
 drop policy if exists "add unit photos" on unit_photos;
 create policy "add unit photos" on unit_photos for insert
