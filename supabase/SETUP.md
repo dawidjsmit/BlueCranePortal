@@ -23,6 +23,13 @@ Everything here is free for a complex your size.
 3. New query again → paste **`02_policies.sql`** → **Run**.
 4. (Optional) New query → paste **`03_seed.sql`** → **Run** for 3 example units.
 
+### Migrations (run each once, in order, as the app grows)
+The app is built in phases. When you pull a new phase, run its migration
+in the SQL Editor the same way:
+
+- **`04_phase1_layouts.sql`** — Unit Layouts + a layout link on Units.
+  (Includes 5 starter layouts; edit or remove them in the app.)
+
 If each run says *Success. No rows returned*, you're good.
 
 ## Step 3 — Turn on email login (magic link + password)

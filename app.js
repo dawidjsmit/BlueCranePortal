@@ -31,7 +31,7 @@ const STATUS_ORDER = ["open", "in_progress", "waiting_on_resident", "resolved"];
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [] };
 let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
@@ -224,7 +224,8 @@ function buildTabs() {
   const tabs = [{ id: "dashboard", label: "Dashboard" }, { id: "requests", label: "Requests" }];
   if (isTrustee()) {
     tabs.push({ id: "units", label: "Units" });
-    tabs.push({ id: "people", label: "People" });
+    tabs.push({ id: "layouts", label: "Layouts" });
+    tabs.push({ id: "users", label: "Users" });
   }
   const el = $("#tabs");
   el.hidden = false;
@@ -235,14 +236,16 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, requests, profiles] = await Promise.all([
+  const [units, requests, profiles, layouts] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("requests").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
+    sb.from("unit_layouts").select("*").order("code"),
   ]);
   state.units = units.data || [];
   state.requests = requests.data || [];
   state.profiles = profiles.data || [];
+  state.layouts = layouts.data || [];
 }
 
 /* ---------- Views ---------- */
@@ -252,13 +255,21 @@ function showView(name) {
     dashboard: renderDashboard,
     requests: renderRequests,
     units: renderUnits,
-    people: renderPeople,
+    layouts: renderLayouts,
+    users: renderPeople,
   }[name];
   if (render) render();
 }
 
 function unitNum(id) {
   return state.units.find((u) => u.id === id)?.number || "?";
+}
+function layoutById(id) {
+  return state.layouts.find((l) => l.id === id);
+}
+function layoutLabel(id) {
+  const l = layoutById(id);
+  return l ? l.code : "—";
 }
 
 function renderDashboard() {
@@ -310,18 +321,94 @@ function renderUnits() {
       <div class="panel-head"><h2>🏠 Units</h2>
         <button class="btn primary" id="add-unit-btn">+ Add unit</button></div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Unit</th><th>Notes</th><th>Open requests</th>
+        <th>Unit</th><th>Layout</th><th>Notes</th><th>Open requests</th><th></th>
       </tr></thead><tbody>
         ${state.units.map((u) => {
           const open = state.requests.filter((r) => r.unit_id === u.id && r.status !== "resolved").length;
           return `<tr><td><strong>${esc(u.number)}</strong></td>
+            <td>${esc(layoutLabel(u.layout_id))}</td>
             <td>${esc(u.notes || "—")}</td>
-            <td><span class="badge-count ${open ? "" : "zero"}">${open}</span></td></tr>`;
-        }).join("") || `<tr><td colspan="3" class="empty">No units yet.</td></tr>`}
+            <td><span class="badge-count ${open ? "" : "zero"}">${open}</span></td>
+            <td style="text-align:right"><button class="btn ghost small" data-edit-unit="${u.id}">Edit</button></td></tr>`;
+        }).join("") || `<tr><td colspan="5" class="empty">No units yet.</td></tr>`}
       </tbody></table></div>
     </div>`;
-  $("#add-unit-btn").addEventListener("click", () => $("#unit-modal").classList.add("active"));
+  $("#add-unit-btn").addEventListener("click", () => openUnitModal(null));
 }
+
+function openUnitModal(unit) {
+  $("#unit-modal-title").textContent = unit ? "Edit unit" : "Add unit";
+  $("#unit-id").value = unit?.id || "";
+  $("#unit-number").value = unit?.number || "";
+  $("#unit-notes").value = unit?.notes || "";
+  // Layout dropdown
+  $("#unit-layout").innerHTML =
+    `<option value="">— none —</option>` +
+    state.layouts.map((l) =>
+      `<option value="${l.id}" ${unit?.layout_id === l.id ? "selected" : ""}>${esc(l.code)}${l.description ? " — " + esc(l.description) : ""}</option>`
+    ).join("");
+  $("#unit-modal").classList.add("active");
+}
+
+function renderLayouts() {
+  const cards = state.layouts.map((l) => {
+    const units = state.units.filter((u) => u.layout_id === l.id);
+    const unitChips = units.length
+      ? units.map((u) => `<span class="chip">${esc(u.number)}</span>`).join(" ")
+      : `<span class="muted tiny">No units use this layout yet.</span>`;
+    return `<div class="layout-card">
+      <div class="rc-top">
+        <div><div class="rc-title">${esc(l.code)}</div>
+          <div class="rc-meta">${esc(l.description || "No description")}</div></div>
+        <button class="btn ghost small" data-edit-layout="${l.id}">Edit</button>
+      </div>
+      <div class="linked-row">
+        <span class="muted tiny">Units with this layout (${units.length}):</span> ${unitChips}
+      </div>
+      <div class="muted tiny" style="margin-top:6px">🖼️ Drawing upload coming in a later phase.</div>
+    </div>`;
+  }).join("");
+
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>📐 Unit layouts</h2>
+        <button class="btn primary" id="add-layout-btn">+ Add layout</button></div>
+      <div class="layout-list">
+        ${cards || `<div class="empty">No layouts yet. Add your first layout.</div>`}
+      </div>
+    </div>`;
+  $("#add-layout-btn").addEventListener("click", () => openLayoutModal(null));
+}
+
+function openLayoutModal(layout) {
+  $("#layout-modal-title").textContent = layout ? "Edit layout" : "Add layout";
+  $("#layout-id").value = layout?.id || "";
+  $("#layout-code").value = layout?.code || "";
+  $("#layout-description").value = layout?.description || "";
+  $("#layout-msg").textContent = "";
+  $("#layout-modal").classList.add("active");
+}
+
+$("#layout-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#layout-id").value;
+  const payload = {
+    code: $("#layout-code").value.trim(),
+    description: $("#layout-description").value.trim(),
+  };
+  const { error } = id
+    ? await sb.from("unit_layouts").update(payload).eq("id", id)
+    : await sb.from("unit_layouts").insert(payload);
+  if (error) {
+    setMsg("layout-msg",
+      error.message.includes("duplicate") ? "A layout with that code already exists." : "⚠️ " + error.message,
+      false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
 
 function renderPeople() {
   const rows = state.profiles.map((p) => `
@@ -444,12 +531,16 @@ $("#request-form").addEventListener("submit", async (e) => {
 
 $("#unit-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const { error } = await sb.from("units").insert({
+  const id = $("#unit-id").value;
+  const payload = {
     number: $("#unit-number").value.trim(),
     notes: $("#unit-notes").value.trim(),
-  });
+    layout_id: $("#unit-layout").value || null,
+  };
+  const { error } = id
+    ? await sb.from("units").update(payload).eq("id", id)
+    : await sb.from("units").insert(payload);
   if (error) { alert(error.message); return; }
-  $("#unit-number").value = ""; $("#unit-notes").value = "";
   closeOverlays();
   await loadData();
   refreshActiveView();
@@ -530,6 +621,8 @@ document.addEventListener("click", async (e) => {
   }
   if (t.dataset.approve) approve(t.dataset.approve);
   if (t.dataset.linkUnit) openLinkModal(t.dataset.linkUnit);
+  if (t.dataset.editUnit) openUnitModal(state.units.find((u) => u.id === t.dataset.editUnit));
+  if (t.dataset.editLayout) openLayoutModal(state.layouts.find((l) => l.id === t.dataset.editLayout));
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);

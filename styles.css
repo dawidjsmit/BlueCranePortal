@@ -262,3 +262,15 @@ tbody tr:hover { background: #f9fafb; }
 .pill.in_progress { background: #fef3c7; color: var(--progress); }
 .pill.waiting_on_resident { background: #ede9fe; color: var(--waiting); }
 .pill.resolved { background: #dcfce7; color: var(--resolved); }
+
+/* ===== Phase 1: Unit layouts ===== */
+.layout-list { display: flex; flex-direction: column; gap: 12px; }
+.layout-card {
+  border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+}
+.layout-card .rc-title { font-weight: 600; font-size: 16px; }
+.linked-row { margin-top: 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chip {
+  display: inline-block; background: #eff6ff; color: var(--brand-dark);
+  border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 600;
+}
