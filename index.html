@@ -143,13 +143,33 @@
 
   <div class="modal-overlay" id="unit-modal">
     <div class="modal">
-      <h3>Add unit</h3>
+      <h3 id="unit-modal-title">Add unit</h3>
       <form id="unit-form">
+        <input type="hidden" id="unit-id" />
         <label>Unit number / name <input id="unit-number" required placeholder="e.g. 12A" /></label>
+        <label>Layout <select id="unit-layout"></select></label>
         <label>Notes <textarea id="unit-notes" rows="2"></textarea></label>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
           <button type="submit" class="btn primary">Save unit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Unit Layout maintenance modal -->
+  <div class="modal-overlay" id="layout-modal">
+    <div class="modal">
+      <h3 id="layout-modal-title">Add layout</h3>
+      <form id="layout-form">
+        <input type="hidden" id="layout-id" />
+        <label>Code <input id="layout-code" required placeholder="e.g. A" /></label>
+        <label>Description <textarea id="layout-description" rows="2" placeholder="e.g. 3 bed, 2 bath, double garage"></textarea></label>
+        <p class="muted tiny">A drawing/image for each layout can be uploaded in a later phase.</p>
+        <p id="layout-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save layout</button>
         </div>
       </form>
     </div>
