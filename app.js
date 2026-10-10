@@ -1297,11 +1297,93 @@ async function openTicket(id) {
     <p id="ticket-photo-msg" class="login-msg"></p>
 
     <h4 style="margin:14px 0 0">Feedback</h4>
-    <p class="muted tiny">The feedback conversation &amp; routing arrives in the next phase.</p>`;
+    <div id="feedback-thread"><p class="muted tiny">Loading…</p></div>
+    ${feedbackComposer(t, isDraft)}`;
 
   $("#detail-modal").classList.add("active");
   const input = $("#ticket-photo-input");
   if (input) input.addEventListener("change", (e) => onTicketPhotoChosen(e, id));
+
+  // Load + render the conversation (feedback is only meaningful once sent).
+  await renderFeedbackThread(id);
+}
+
+// True if the current user holds the ticket's assigned role on its unit.
+function iHoldAssignedRole(t) {
+  if (!t.assigned_role) return false;
+  if (t.assigned_role === "trustee") return isTrustee();
+  if (t.assigned_role === "owner") return amOwnerOf(t.unit_id);
+  if (t.assigned_role === "tenant") return amTenantOf(t.unit_id);
+  if (t.assigned_role === "occupant") return amOccupantOf(t.unit_id);
+  if (t.assigned_role === "gardener" || t.assigned_role === "service_provider")
+    return me.role === t.assigned_role;
+  return false;
+}
+
+function feedbackComposer(t, isDraft) {
+  // No feedback while still a draft (not yet sent) or once closed.
+  if (isDraft) return `<p class="muted tiny">Submit the ticket to start the conversation.</p>`;
+  if (["complete", "cancelled"].includes(t.status)) {
+    return `<p class="muted tiny">This ticket is ${TICKET_STATUS_LABEL[t.status].toLowerCase()}. ${isTrustee() ? "Reopen by setting another status to add feedback." : "No further feedback can be added."}</p>`;
+  }
+  // Can the current user route the ticket onward?
+  //  - trustees always
+  //  - a user currently holding the assigned role
+  const canRoute = isTrustee() || iHoldAssignedRole(t);
+  const roleOptions = ROUTE_ROLES
+    .map((r) => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join("");
+  // Default "send to" suggestion: back to the logger's role.
+  return `
+    <form id="feedback-form" class="feedback-form">
+      <textarea id="feedback-body" rows="2" placeholder="Add feedback…" required></textarea>
+      <div class="feedback-controls">
+        <label class="feedback-photo-label btn ghost small">📎 Photo
+          <input type="file" accept="image/*" id="feedback-photo-input" hidden />
+          <span id="feedback-photo-name" class="muted tiny"></span>
+        </label>
+        ${canRoute ? `
+        <label class="send-to-wrap">
+          <input type="checkbox" id="feedback-send-check" />
+          send to
+          <select id="feedback-send-role" disabled>${roleOptions}</select>
+        </label>` : ""}
+        <button type="submit" class="btn primary small">Post feedback</button>
+      </div>
+      <p id="feedback-msg" class="login-msg"></p>
+    </form>`;
+}
+
+async function renderFeedbackThread(ticketId) {
+  const { data: fb } = await sb.from("ticket_feedback")
+    .select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true });
+  const { data: fphotos } = await sb.from("feedback_photos")
+    .select("*").in("feedback_id", (fb || []).map((f) => f.id).length ? (fb || []).map((f) => f.id) : ["00000000-0000-0000-0000-000000000000"]);
+  const photosByFb = {};
+  (fphotos || []).forEach((p) => { (photosByFb[p.feedback_id] ||= []).push(p); });
+
+  const el = $("#feedback-thread");
+  if (!el) return;
+  if (!fb || !fb.length) {
+    el.innerHTML = `<p class="muted tiny">No feedback yet.</p>`;
+    return;
+  }
+  el.innerHTML = fb.map((f) => {
+    const who = f.author_id === me.id ? "You" : authorName(f.author_id);
+    const role = f.author_role ? (ROLE_LABEL[f.author_role] || f.author_role) : "";
+    const imgs = (photosByFb[f.id] || []).map((p) =>
+      `<a href="${publicUrl(p.storage_path)}" target="_blank" rel="noopener"><img src="${publicUrl(p.storage_path)}" class="fb-img" loading="lazy" /></a>`).join("");
+    return `<div class="fb-item">
+      <div class="fb-head"><strong>${esc(who)}</strong>${role ? ` <span class="muted tiny">· ${esc(role)}</span>` : ""}
+        <span class="tl-time">${fmtDate(f.created_at)}</span></div>
+      <div class="fb-body">${esc(f.body)}</div>
+      ${imgs ? `<div class="fb-imgs">${imgs}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function authorName(id) {
+  const p = state.profiles.find((x) => x.id === id);
+  return p ? (p.full_name || p.email) : "User";
 }
 
 function loggerName(t) {
@@ -1360,6 +1442,68 @@ async function deleteTicketPhoto(photoId) {
   await loadData();
   openTicket(photo.ticket_id);
 }
+
+/* ---------- Feedback conversation + routing + status automation ---------- */
+// Enable the send-to dropdown only when the checkbox is ticked.
+document.addEventListener("change", (e) => {
+  if (e.target.id === "feedback-send-check") {
+    $("#feedback-send-role").disabled = !e.target.checked;
+  }
+  if (e.target.id === "feedback-photo-input") {
+    const f = e.target.files[0];
+    $("#feedback-photo-name").textContent = f ? " " + f.name : "";
+  }
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "feedback-form") return;
+  e.preventDefault();
+  const t = state.tickets.find((x) => x.id === currentTicketId);
+  if (!t) return;
+
+  const body = $("#feedback-body").value.trim();
+  if (!body) return;
+
+  const sendChecked = $("#feedback-send-check") && $("#feedback-send-check").checked;
+  const sendRole = sendChecked ? $("#feedback-send-role").value : null;
+  const file = $("#feedback-photo-input") ? $("#feedback-photo-input").files[0] : null;
+
+  setMsg("feedback-msg", "Posting…", true);
+
+  // 1) Insert the feedback entry.
+  const { data: fb, error: fbErr } = await sb.from("ticket_feedback").insert({
+    ticket_id: t.id, author_id: me.id, author_role: me.role, body,
+  }).select().single();
+  if (fbErr) { setMsg("feedback-msg", "⚠️ " + fbErr.message, false); return; }
+
+  // 2) Optional evidence photo on the feedback.
+  if (file) {
+    try {
+      const path = await uploadFile(file, `feedback/${t.id}`);
+      await sb.from("feedback_photos").insert({ feedback_id: fb.id, storage_path: path });
+    } catch (err) {
+      setMsg("feedback-msg", "Feedback saved, but photo upload failed: " + (err.message || ""), false);
+    }
+  }
+
+  // 3) Status automation:
+  //    - rerouted  -> status Waiting, assigned_role changes
+  //    - else, if poster holds the assigned role -> status Busy
+  const updates = {};
+  if (sendRole && sendRole !== t.assigned_role) {
+    updates.assigned_role = sendRole;
+    updates.status = "waiting";
+  } else if (iHoldAssignedRole(t) && t.status !== "busy") {
+    updates.status = "busy";
+  }
+  if (Object.keys(updates).length) {
+    await sb.from("tickets").update(updates).eq("id", t.id);
+  }
+
+  await loadData();
+  openTicket(t.id);       // re-render detail (thread + fresh status)
+  refreshActiveView();     // refresh the list behind the modal
+});
 
 /* ---------- Ticket create / edit ---------- */
 function openTicketModal(ticket) {

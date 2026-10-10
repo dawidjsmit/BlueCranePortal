@@ -323,3 +323,19 @@ tbody tr:hover { background: #f9fafb; }
 .pill.ticket-complete  { background: #dcfce7; color: #16a34a; }
 .pill.ticket-cancelled { background: #fee2e2; color: #dc2626; }
 .pill.ticket-parked    { background: #f3f4f6; color: #6b7280; }
+
+/* ===== Ticket feedback conversation ===== */
+#feedback-thread { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+.fb-item { background: #f9fafb; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.fb-head { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+.fb-body { margin-top: 4px; white-space: pre-wrap; }
+.fb-imgs { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+.fb-img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+
+.feedback-form { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
+.feedback-form textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; font-size: 14px; }
+.feedback-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.feedback-photo-label { display: inline-flex; align-items: center; cursor: pointer; }
+.send-to-wrap { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.send-to-wrap select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; }
+.send-to-wrap select:disabled { opacity: .5; }
