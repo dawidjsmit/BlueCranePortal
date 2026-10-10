@@ -8,6 +8,6 @@
    Until these are filled in, the app runs in a local-only demo mode.
    ============================================================ */
 window.COMPLEX_COMMS_CONFIG = {
-  SUPABASE_URL: "", // e.g. "https://abcdxyz.supabase.co"
-  SUPABASE_ANON_KEY: "", // e.g. "eyJhbGciOi..."
+  SUPABASE_URL: "https://zsuwfqdzzztvmsngqfvt.supabase.co/rest/v1/", // e.g. "https://abcdxyz.supabase.co"
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzdXdmcWR6enp0dm1zbmdxZnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2MjAzODYsImV4cCI6MjEwNzE5NjM4Nn0.cJxDfP2Sxo8aS6-L47tZmij5wBiRhhOAwbZrzihTcxk", // e.g. "eyJhbGciOi..."
 };
