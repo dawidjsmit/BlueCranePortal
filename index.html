@@ -101,6 +101,31 @@
     </div>
   </div>
 
+  <!-- Link person to unit modal (replaces the old browser prompt boxes) -->
+  <div class="modal-overlay" id="link-modal">
+    <div class="modal">
+      <h3>Link person to a unit</h3>
+      <p class="muted tiny" id="link-person-label" style="margin-top:-6px"></p>
+      <form id="link-form">
+        <input type="hidden" id="link-profile-id" />
+        <label>Unit
+          <select id="link-unit" required></select>
+        </label>
+        <label>Relationship
+          <select id="link-relation">
+            <option value="owner">Owner</option>
+            <option value="tenant">Tenant</option>
+          </select>
+        </label>
+        <p id="link-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Link to unit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Supabase JS client (loaded from CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>

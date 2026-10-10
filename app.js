@@ -379,18 +379,49 @@ async function setRole(id, role) {
   await sb.from("profiles").update({ role }).eq("id", id);
   await loadData();
 }
-async function linkUnit(profileId) {
-  const num = prompt("Link to which unit number? (e.g. 12A)");
-  if (!num) return;
-  const unit = state.units.find((u) => u.number.toLowerCase() === num.trim().toLowerCase());
-  if (!unit) { alert("No unit with that number. Add it under Units first."); return; }
-  const relation = prompt("Relation? type: owner or tenant", "owner");
-  const { error } = await sb.from("unit_members").insert({
-    unit_id: unit.id, profile_id: profileId, relation: relation || "owner",
-  });
-  if (error) alert(error.message);
-  else alert("Linked ✔");
+function openLinkModal(profileId) {
+  const person = state.profiles.find((p) => p.id === profileId);
+  if (!state.units.length) {
+    $("#link-person-label").textContent = "";
+    $("#link-msg").textContent = "⚠️ Add a unit first (Units tab), then link people to it.";
+    $("#link-msg").className = "login-msg err";
+  } else {
+    $("#link-msg").textContent = "";
+    $("#link-msg").className = "login-msg";
+    $("#link-person-label").textContent =
+      "Linking " + (person?.full_name || person?.email || "this person");
+  }
+  $("#link-profile-id").value = profileId;
+  $("#link-unit").innerHTML = state.units
+    .map((u) => `<option value="${u.id}">${esc(u.number)}</option>`)
+    .join("");
+  $("#link-relation").value = "owner";
+  $("#link-modal").classList.add("active");
 }
+
+$("#link-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const profileId = $("#link-profile-id").value;
+  const unitId = $("#link-unit").value;
+  const relation = $("#link-relation").value;
+  if (!unitId) return;
+  const { error } = await sb.from("unit_members").insert({
+    unit_id: unitId, profile_id: profileId, relation,
+  });
+  const msg = $("#link-msg");
+  if (error) {
+    // Most common error: this person is already linked to that unit.
+    msg.textContent = error.message.includes("duplicate")
+      ? "This person is already linked to that unit."
+      : "⚠️ " + error.message;
+    msg.className = "login-msg err";
+    return;
+  }
+  msg.textContent = "✅ Linked!";
+  msg.className = "login-msg ok";
+  await loadData();
+  setTimeout(() => { closeOverlays(); renderPeople(); }, 700);
+});
 
 /* ---------- Delegated events ---------- */
 document.addEventListener("click", async (e) => {
@@ -413,7 +444,7 @@ document.addEventListener("click", async (e) => {
     }
   }
   if (t.dataset.approve) approve(t.dataset.approve);
-  if (t.dataset.linkUnit) linkUnit(t.dataset.linkUnit);
+  if (t.dataset.linkUnit) openLinkModal(t.dataset.linkUnit);
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
