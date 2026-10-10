@@ -1,0 +1,7 @@
+# Nothing to build — this is a static app.
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
