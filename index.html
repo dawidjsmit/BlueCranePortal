@@ -33,13 +33,67 @@
       <img class="logo big" src="assets/logo.svg" alt="Blue Crane Vistas Portal" width="72" height="72" />
       <h2>Blue Crane Vistas Portal</h2>
       <p class="muted" style="margin-top:-4px">Resident &amp; trustee portal</p>
-      <p class="muted">Enter your email and we'll send you a magic link — no password needed.</p>
-      <form id="login-form">
-        <input type="email" id="login-email" placeholder="you@example.com" required />
-        <button class="btn primary block" type="submit">Send magic link</button>
-      </form>
+
+      <!-- Choose how to sign in -->
+      <div class="login-switch">
+        <button type="button" class="login-switch-btn active" data-login-tab="magic">Magic link</button>
+        <button type="button" class="login-switch-btn" data-login-tab="password">Password</button>
+      </div>
+
+      <!-- Magic link tab -->
+      <div class="login-tab" id="login-tab-magic">
+        <p class="muted tiny">We'll email you a one-time link — no password needed.</p>
+        <form id="magic-form">
+          <input type="email" id="magic-email" placeholder="you@example.com" required />
+          <button class="btn primary block" type="submit">Send magic link</button>
+        </form>
+      </div>
+
+      <!-- Password tab -->
+      <div class="login-tab" id="login-tab-password" hidden>
+        <p class="muted tiny">Prefer a password? Sign in with the one you set in the app.</p>
+        <form id="password-form">
+          <input type="email" id="pw-email" placeholder="you@example.com" required />
+          <input type="password" id="pw-password" placeholder="Your password" required />
+          <button class="btn primary block" type="submit">Sign in</button>
+        </form>
+        <button type="button" class="link-btn" id="forgot-link">Forgot your password?</button>
+        <p class="muted tiny">No password yet? Sign in with a magic link first, then set a password from your account menu.</p>
+      </div>
+
       <p id="login-msg" class="login-msg"></p>
       <p class="muted tiny">New here? Signing in creates your account. A trustee will approve it and link you to your unit.</p>
+    </div>
+  </section>
+
+  <!-- Forgot-password view -->
+  <section id="view-forgot" class="auth-wrap" hidden>
+    <div class="auth-card">
+      <img class="logo big" src="assets/logo.svg" alt="Blue Crane Vistas Portal" width="72" height="72" />
+      <h2>Reset your password</h2>
+      <p class="muted">Enter your email and we'll send you a link to set a new password.</p>
+      <form id="forgot-form">
+        <input type="email" id="forgot-email" placeholder="you@example.com" required />
+        <button class="btn primary block" type="submit">Send reset link</button>
+      </form>
+      <p id="forgot-msg" class="login-msg"></p>
+      <button type="button" class="link-btn" id="forgot-back">← Back to sign in</button>
+    </div>
+  </section>
+
+  <!-- Set / update password view (shown after a reset link, or from account menu) -->
+  <section id="view-set-password" class="auth-wrap" hidden>
+    <div class="auth-card">
+      <img class="logo big" src="assets/logo.svg" alt="Blue Crane Vistas Portal" width="72" height="72" />
+      <h2>Set a password</h2>
+      <p class="muted">Choose a password so you can sign in without a magic link in future.</p>
+      <form id="set-password-form">
+        <input type="password" id="set-pw1" placeholder="New password (min 6 characters)" minlength="6" required />
+        <input type="password" id="set-pw2" placeholder="Confirm password" minlength="6" required />
+        <button class="btn primary block" type="submit">Save password</button>
+      </form>
+      <p id="set-pw-msg" class="login-msg"></p>
+      <button type="button" class="link-btn" id="set-pw-skip">Skip for now</button>
     </div>
   </section>
 

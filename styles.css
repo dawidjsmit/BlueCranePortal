@@ -224,6 +224,26 @@ tbody tr:hover { background: #f9fafb; }
 .login-msg { font-size: 14px; min-height: 20px; }
 .login-msg.ok { color: var(--resolved); }
 .login-msg.err { color: var(--open); }
+
+/* Login method switcher (Magic link / Password) */
+.login-switch {
+  display: flex; gap: 4px; background: var(--bg);
+  border-radius: 999px; padding: 4px; margin: 18px 0 6px;
+}
+.login-switch-btn {
+  flex: 1; border: none; background: transparent; cursor: pointer;
+  padding: 8px 10px; border-radius: 999px; font-size: 14px; color: var(--muted);
+  font-weight: 500; transition: background .15s, color .15s;
+}
+.login-switch-btn.active { background: #fff; color: var(--brand-dark); box-shadow: var(--shadow); font-weight: 600; }
+.login-tab { animation: fade .2s ease; }
+
+/* Text-style link button (forgot password, back, skip) */
+.link-btn {
+  background: none; border: none; color: var(--brand); cursor: pointer;
+  font-size: 13px; padding: 6px; text-decoration: underline;
+}
+.link-btn:hover { color: var(--brand-dark); }
 .muted { color: var(--muted); }
 .tiny { font-size: 12px; }
 
