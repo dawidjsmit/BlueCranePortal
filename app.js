@@ -18,6 +18,7 @@ const ROLE_LABEL = {
   trustee: "Trustee",
   owner: "Owner",
   tenant: "Tenant",
+  occupant: "Occupant",
   gardener: "Gardener",
   service_provider: "Service provider",
 };
@@ -36,9 +37,17 @@ const RELATION_LABEL = {
 };
 const PET_TYPE_LABEL = { dog: "Dog", cat: "Cat", other: "Other" };
 
+// Ticket statuses + labels
+const TICKET_STATUS_LABEL = {
+  create: "Create", sent: "Sent", busy: "Busy", waiting: "Waiting",
+  complete: "Complete", cancelled: "Cancelled", parked: "Parked",
+};
+// Which role each ticket can be assigned/routed to.
+const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "service_provider"];
+
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [] };
 let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
@@ -221,7 +230,11 @@ async function showApp() {
 
 function isTrustee() { return me.role === "trustee"; }
 function isAssignee() { return me.role === "gardener" || me.role === "service_provider"; }
-function isResident() { return me.role === "owner" || me.role === "tenant"; }
+function isResident() { return me.role === "owner" || me.role === "tenant" || me.role === "occupant"; }
+function amOccupantOf(unitId) {
+  return state.occupants.some((o) => o.unit_id === unitId && o.profile_id === me.id && o.active)
+      || state.members.some((m) => m.unit_id === unitId && m.profile_id === me.id && m.relation === "occupant");
+}
 
 /* ---- Client-side permission helpers (mirror the DB RLS) ----
    These decide what the UI SHOWS/enables. The database enforces the
@@ -230,14 +243,16 @@ function myUnitIds() {
   // Units this user can access.
   const ids = new Set();
   if (isResident()) {
-    // Owners/tenants: via unit_members or an owner/tenant record (profile_id).
+    // Owners/tenants/occupants: via unit_members or a record (profile_id).
     state.members.filter((m) => m.profile_id === me.id).forEach((m) => ids.add(m.unit_id));
     state.owners.filter((o) => o.profile_id === me.id && o.active).forEach((o) => ids.add(o.unit_id));
     state.tenants.filter((t) => t.profile_id === me.id && t.active).forEach((t) => ids.add(t.unit_id));
+    state.occupants.filter((o) => o.profile_id === me.id && o.active).forEach((o) => ids.add(o.unit_id));
   }
   if (isAssignee()) {
-    // Gardeners/service providers: units of requests assigned to them.
-    state.requests.filter((r) => r.assignee_id === me.id).forEach((r) => ids.add(r.unit_id));
+    // Gardeners/service providers: units of tickets currently assigned to
+    // their role (RLS only returns those to them anyway).
+    state.tickets.forEach((t) => ids.add(t.unit_id));
   }
   return ids;
 }
@@ -268,7 +283,7 @@ function defaultView() {
 }
 
 function buildTabs() {
-  const tabs = [{ id: "dashboard", label: "Dashboard" }, { id: "requests", label: "Requests" }];
+  const tabs = [{ id: "dashboard", label: "Dashboard" }, { id: "tickets", label: "Tickets" }];
   if (isTrustee()) {
     tabs.push({ id: "units", label: "Units" });
     tabs.push({ id: "owners", label: "Owners" });
@@ -276,6 +291,7 @@ function buildTabs() {
     tabs.push({ id: "occupants", label: "Occupants" });
     tabs.push({ id: "pets", label: "Pets" });
     tabs.push({ id: "layouts", label: "Layouts" });
+    tabs.push({ id: "tickettypes", label: "Ticket types" });
     tabs.push({ id: "users", label: "Users" });
   } else if (myUnitIds().size) {
     // Residents, gardeners, service providers see their linked unit(s).
@@ -290,9 +306,9 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, requests, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos] = await Promise.all([
     sb.from("units").select("*").order("number"),
-    sb.from("requests").select("*").order("created_at", { ascending: false }),
+    sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
     sb.from("unit_layouts").select("*").order("code"),
     sb.from("owners").select("*").order("last_name"),
@@ -301,9 +317,11 @@ async function loadData() {
     sb.from("pets").select("*").order("name"),
     sb.from("unit_photos").select("*").order("created_at"),
     sb.from("unit_members").select("*"),
+    sb.from("ticket_types").select("*").order("sort_order"),
+    sb.from("ticket_photos").select("*").order("created_at"),
   ]);
   state.units = units.data || [];
-  state.requests = requests.data || [];
+  state.tickets = tickets.data || [];
   state.profiles = profiles.data || [];
   state.layouts = layouts.data || [];
   state.owners = owners.data || [];
@@ -312,6 +330,8 @@ async function loadData() {
   state.pets = pets.data || [];
   state.unitPhotos = unitPhotos.data || [];
   state.members = members.data || [];
+  state.ticketTypes = ticketTypes.data || [];
+  state.ticketPhotos = ticketPhotos.data || [];
 }
 
 /* ---------- Storage helpers (Phase 4) ---------- */
@@ -338,7 +358,7 @@ function showView(name) {
   $$(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   const render = {
     dashboard: renderDashboard,
-    requests: renderRequests,
+    tickets: renderTickets,
     units: renderUnits,
     myunits: renderMyUnits,
     owners: renderOwnersList,
@@ -346,6 +366,7 @@ function showView(name) {
     occupants: renderOccupantsList,
     pets: renderPetsList,
     layouts: renderLayouts,
+    tickettypes: renderTicketTypes,
     users: renderPeople,
   }[name];
   if (render) render();
@@ -362,47 +383,66 @@ function layoutLabel(id) {
   return l ? l.code : "—";
 }
 
-function renderDashboard() {
-  const open = state.requests.filter((r) => r.status !== "resolved");
-  const counts = {};
-  STATUS_ORDER.forEach((s) => (counts[s] = state.requests.filter((r) => r.status === s).length));
+// Is this ticket currently waiting on a role I hold on its unit?
+function needsMyAction(t) {
+  if (t.status === "complete" || t.status === "cancelled") return false;
+  if (isTrustee()) return t.assigned_role === "trustee";
+  if (!t.assigned_role) return false;
+  if (t.assigned_role === "owner") return amOwnerOf(t.unit_id);
+  if (t.assigned_role === "tenant") return amTenantOf(t.unit_id);
+  if (t.assigned_role === "occupant") return amOccupantOf(t.unit_id);
+  if (t.assigned_role === "gardener" || t.assigned_role === "service_provider")
+    return me.role === t.assigned_role;
+  return false;
+}
 
-  const headline = isTrustee()
-    ? "Who is waiting on what — across the complex"
-    : isAssignee()
-    ? "Jobs assigned to you"
-    : "Your unit's open requests";
+function renderDashboard() {
+  const open = state.tickets.filter((t) => !["complete", "cancelled"].includes(t.status));
+  const mine = state.tickets.filter(needsMyAction);
+  const myDrafts = state.tickets.filter((t) => t.status === "create" && t.logged_by === me.id);
 
   $("#main").innerHTML = `
     <div class="stats-grid">
       ${isTrustee() ? statCard(state.units.length, "Units", "") : ""}
-      ${statCard(open.length, "Open items", "open")}
-      ${statCard(counts.in_progress, "In progress", "progress")}
-      ${statCard(counts.waiting_on_resident, "Waiting on resident", "waiting")}
-      ${statCard(counts.resolved, "Resolved", "resolved")}
+      ${statCard(open.length, "Open tickets", "open")}
+      ${statCard(mine.length, "Needs my feedback", "waiting")}
+      ${statCard(myDrafts.length, "My drafts", "progress")}
     </div>
     <div class="panel">
-      <div class="panel-head"><h2>⏳ ${headline}</h2>
-        ${canCreateRequest() ? `<button class="btn primary" data-new-request>+ Log request</button>` : ""}
+      <div class="panel-head"><h2>⏳ Needs my feedback</h2>
+        ${canCreateTicket() ? `<button class="btn primary" data-new-ticket>+ Log a ticket</button>` : ""}
       </div>
       <div class="request-list">
-        ${open.length ? open.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).map(requestCard).join("")
-          : `<div class="empty">🎉 Nothing open right now.</div>`}
+        ${mine.length ? mine.map(ticketCard).join("")
+          : `<div class="empty">🎉 Nothing waiting on you right now.</div>`}
       </div>
     </div>`;
 }
 
-function renderRequests() {
-  $("#main").innerHTML = `
+function renderTickets() {
+  // Build filtered groups.
+  const all = state.tickets.slice();
+  const mine = all.filter(needsMyAction);
+  const drafts = all.filter((t) => t.status === "create" && t.logged_by === me.id);
+  const others = all.filter((t) => !mine.includes(t) && !drafts.includes(t));
+
+  const section = (title, list, hint) => `
     <div class="panel">
-      <div class="panel-head"><h2>🎫 Requests</h2>
-        ${canCreateRequest() ? `<button class="btn primary" data-new-request>+ Log request</button>` : ""}
-      </div>
+      <div class="panel-head"><h2>${title}</h2>${hint ? `<span class="hint">${hint}</span>` : ""}</div>
       <div class="request-list">
-        ${state.requests.length ? state.requests.map(requestCard).join("")
-          : `<div class="empty">No requests yet.</div>`}
+        ${list.length ? list.map(ticketCard).join("") : `<div class="empty">None.</div>`}
       </div>
     </div>`;
+
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🎟️ Tickets</h2>
+        ${canCreateTicket() ? `<button class="btn primary" data-new-ticket>+ Log a ticket</button>` : ""}
+      </div>
+    </div>
+    ${drafts.length ? section("📝 My drafts (not yet sent)", drafts) : ""}
+    ${section("⏳ Needs my feedback", mine, "Tickets currently assigned to a role you hold")}
+    ${section(isTrustee() ? "📋 All other tickets" : "📋 Other tickets on my unit(s)", others)}`;
 }
 
 function renderUnits() {
@@ -411,10 +451,10 @@ function renderUnits() {
       <div class="panel-head"><h2>🏠 Units</h2>
         <button class="btn primary" id="add-unit-btn">+ Add unit</button></div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Unit</th><th>Layout</th><th>People</th><th>Open requests</th><th></th>
+        <th>Unit</th><th>Layout</th><th>People</th><th>Open tickets</th><th></th>
       </tr></thead><tbody>
         ${state.units.map((u) => {
-          const open = state.requests.filter((r) => r.unit_id === u.id && r.status !== "resolved").length;
+          const open = state.tickets.filter((r) => r.unit_id === u.id && !["complete", "cancelled"].includes(r.status)).length;
           const owners = state.owners.filter((o) => o.unit_id === u.id && o.active).length;
           const tenants = state.tenants.filter((tn) => tn.unit_id === u.id && tn.active).length;
           return `<tr>
@@ -1110,6 +1150,55 @@ function unitsForUser(profileId) {
   }).join(" ");
 }
 
+function renderTicketTypes() {
+  const rows = state.ticketTypes.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
+    <td><strong>${esc(tt.name)}</strong></td>
+    <td>${tt.sort_order}</td>
+    <td>${tt.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Hidden</span>'}</td>
+    <td style="text-align:right"><button class="btn ghost small" data-edit-type="${tt.id}">Edit</button></td>
+  </tr>`).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🏷️ Ticket types</h2>
+        <button class="btn primary small" id="add-type-btn">+ Add type</button></div>
+      <p class="muted tiny">The list of types users choose from when logging a ticket.</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Name</th><th>Order</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No types yet.</td></tr>`}</tbody></table></div>
+    </div>`;
+  $("#add-type-btn").addEventListener("click", () => openTypeModal(null));
+}
+
+function openTypeModal(type) {
+  $("#type-modal-title").textContent = type ? "Edit type" : "Add type";
+  $("#type-id").value = type?.id || "";
+  $("#type-name").value = type?.name || "";
+  $("#type-order").value = type?.sort_order ?? state.ticketTypes.length + 1;
+  $("#type-active").checked = type ? !!type.active : true;
+  $("#type-msg").textContent = "";
+  $("#type-modal").classList.add("active");
+}
+
+$("#type-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#type-id").value;
+  const payload = {
+    name: $("#type-name").value.trim(),
+    sort_order: parseInt($("#type-order").value, 10) || 0,
+    active: $("#type-active").checked,
+  };
+  const { error } = id
+    ? await sb.from("ticket_types").update(payload).eq("id", id)
+    : await sb.from("ticket_types").insert(payload);
+  if (error) {
+    setMsg("type-msg", error.message.includes("duplicate") ? "That type name already exists." : "⚠️ " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
 function renderPeople() {
   const rows = state.profiles.map((p) => `
     <tr>
@@ -1141,93 +1230,178 @@ function renderPeople() {
 function statCard(num, label, cls) {
   return `<div class="stat-card ${cls}"><div class="num">${num}</div><div class="label">${label}</div></div>`;
 }
-function requestCard(r) {
-  return `<div class="request-card" data-open-request="${r.id}">
+function ticketTypeName(id) {
+  return state.ticketTypes.find((t) => t.id === id)?.name || "—";
+}
+function ticketCard(t) {
+  const assigned = t.assigned_role ? `· to <strong>${ROLE_LABEL[t.assigned_role] || t.assigned_role}</strong>` : "";
+  return `<div class="request-card" data-open-ticket="${t.id}">
     <div class="rc-top">
-      <div><div class="rc-title">${esc(r.title)}</div>
-        <div class="rc-meta">Unit <strong>${esc(unitNum(r.unit_id))}</strong>
-          · <span class="rc-cat">${esc(r.category)}</span></div></div>
-      <span class="pill ${r.status}">${STATUS_LABEL[r.status]}</span>
+      <div><div class="rc-title">${esc(t.heading)}</div>
+        <div class="rc-meta">Unit <strong>${esc(unitNum(t.unit_id))}</strong>
+          · <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span> ${assigned}</div></div>
+      <span class="pill ticket-${t.status}">${TICKET_STATUS_LABEL[t.status]}</span>
     </div></div>`;
 }
-function canCreateRequest() {
-  return isTrustee() || isResident();
+// Trustees, residents (owner/tenant/occupant), and assignees can log tickets.
+function canCreateTicket() {
+  return isTrustee() || isResident() || isAssignee();
 }
 
-/* ---------- Request detail + status changes ---------- */
-async function openDetail(id) {
-  const r = state.requests.find((x) => x.id === id);
-  if (!r) return;
-  const { data: log } = await sb.from("request_log")
-    .select("*").eq("request_id", id).order("created_at", { ascending: false });
+/* ---------- Ticket detail ---------- */
+let currentTicketId = null;
 
-  const canUpdate = isTrustee() || r.assignee_id === me.id;
-  const statusBtns = canUpdate
-    ? STATUS_ORDER.filter((s) => s !== r.status)
-        .map((s) => `<button class="btn small ${s === "resolved" ? "primary" : "ghost"}" data-set-status="${r.id}|${s}">Mark ${STATUS_LABEL[s]}</button>`).join(" ")
+async function openTicket(id) {
+  currentTicketId = id;
+  const t = state.tickets.find((x) => x.id === id);
+  if (!t) return;
+  const photos = state.ticketPhotos.filter((p) => p.ticket_id === id);
+  const isLogger = t.logged_by === me.id;
+  const isDraft = t.status === "create";
+  const loggerCanEdit = isLogger && isDraft;
+  const canEditDetails = isTrustee() || loggerCanEdit;
+
+  // Trustee-only status transitions for Complete/Cancelled/Parked.
+  const trusteeStatusBtns = isTrustee() && !isDraft
+    ? ["complete", "cancelled", "parked"].filter((s) => s !== t.status)
+        .map((s) => `<button class="btn small ghost" data-ticket-status="${t.id}|${s}">Mark ${TICKET_STATUS_LABEL[s]}</button>`).join(" ")
     : "";
 
   $("#detail-content").innerHTML = `
-    <h3>${esc(r.title)}</h3>
-    <span class="pill ${r.status}">${STATUS_LABEL[r.status]}</span>
-    <span class="rc-cat">${esc(r.category)}</span>
+    <h3>${esc(t.heading)}</h3>
+    <span class="pill ticket-${t.status}">${TICKET_STATUS_LABEL[t.status]}</span>
+    <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span>
     <dl class="detail-grid">
-      <dt>Unit</dt><dd>${esc(unitNum(r.unit_id))}</dd>
-      <dt>Logged</dt><dd>${fmtDate(r.created_at)}</dd>
+      <dt>Unit</dt><dd>${esc(unitNum(t.unit_id))}</dd>
+      <dt>Logged by</dt><dd>${esc(loggerName(t))}${t.logged_by_role ? " (" + (ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""}</dd>
+      <dt>Logged</dt><dd>${fmtDate(t.created_at)}</dd>
+      <dt>Assigned to</dt><dd>${t.assigned_role ? (ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</dd>
     </dl>
-    <p>${esc(r.details) || "<em>No details.</em>"}</p>
-    <div class="detail-actions">${statusBtns}
-      ${isTrustee() ? `<button class="btn ghost small" data-delete-request="${r.id}" style="color:var(--open)">Delete</button>` : ""}
+    <p>${esc(t.description) || "<em>No description.</em>"}</p>
+
+    ${photos.length ? `<div class="photo-grid">${photos.map((p) =>
+      `<figure class="photo-item"><a href="${publicUrl(p.storage_path)}" target="_blank" rel="noopener">
+        <img src="${publicUrl(p.storage_path)}" loading="lazy" /></a>
+        ${loggerCanEdit || isTrustee() ? `<button class="photo-del" data-del-ticket-photo="${p.id}">✕</button>` : ""}
+      </figure>`).join("")}</div>` : ""}
+
+    <div class="detail-actions">
+      ${loggerCanEdit ? `
+        <label class="btn ghost small upload-label">+ Photo<input type="file" accept="image/*" id="ticket-photo-input" hidden /></label>
+        <button class="btn ghost small" data-edit-ticket="${t.id}">Edit</button>
+        <button class="btn primary small" data-submit-ticket="${t.id}">Submit &amp; send</button>
+        <button class="btn ghost small" data-delete-ticket="${t.id}" style="color:var(--open)">Delete</button>` : ""}
+      ${isTrustee() && !isDraft ? `<button class="btn ghost small" data-edit-ticket="${t.id}">Edit details</button>` : ""}
+      ${trusteeStatusBtns}
     </div>
-    <h4 style="margin-bottom:0">History</h4>
-    <ul class="timeline">
-      ${(log || []).map((e) => `<li>${esc(e.text)}<div class="tl-time">${fmtDate(e.created_at)}</div></li>`).join("")
-        || `<li class="muted">No history yet.</li>`}
-    </ul>`;
+    <p id="ticket-photo-msg" class="login-msg"></p>
+
+    <h4 style="margin:14px 0 0">Feedback</h4>
+    <p class="muted tiny">The feedback conversation &amp; routing arrives in the next phase.</p>`;
+
   $("#detail-modal").classList.add("active");
+  const input = $("#ticket-photo-input");
+  if (input) input.addEventListener("change", (e) => onTicketPhotoChosen(e, id));
 }
 
-async function setStatus(id, status) {
-  await sb.from("requests").update({ status }).eq("id", id);
-  await sb.from("request_log").insert({
-    request_id: id, author_id: me.id,
-    text: `Status → ${STATUS_LABEL[status]}`,
-  });
+function loggerName(t) {
+  const p = state.profiles.find((x) => x.id === t.logged_by);
+  return p ? (p.full_name || p.email) : (t.logged_by === me.id ? "You" : "—");
+}
+
+async function submitTicket(id) {
+  // Create -> Sent, assigned to Trustees.
+  await sb.from("tickets").update({ status: "sent", assigned_role: "trustee" }).eq("id", id);
   await loadData();
-  openDetail(id);
+  openTicket(id);
   refreshActiveView();
 }
 
-/* ---------- Create / edit ---------- */
-function openRequestModal() {
-  const sel = $("#request-unit");
-  // Residents can only log against their own unit(s); RLS also enforces this.
-  sel.innerHTML = state.units
-    .map((u) => `<option value="${u.id}">${esc(u.number)}</option>`).join("");
-  $("#request-id").value = "";
-  $("#request-title").value = "";
-  $("#request-details").value = "";
-  $("#request-modal").classList.add("active");
+async function setTicketStatus(id, status) {
+  await sb.from("tickets").update({ status }).eq("id", id);
+  await loadData();
+  openTicket(id);
+  refreshActiveView();
 }
 
-$("#request-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const payload = {
-    unit_id: $("#request-unit").value,
-    category: $("#request-category").value,
-    title: $("#request-title").value.trim(),
-    details: $("#request-details").value.trim(),
-    created_by: me.id,
-    status: "open",
-  };
-  const { data, error } = await sb.from("requests").insert(payload).select().single();
-  if (error) { alert(error.message); return; }
-  await sb.from("request_log").insert({
-    request_id: data.id, author_id: me.id, text: "Request logged (Open)",
-  });
+async function deleteTicket(id) {
+  if (!confirm("Delete this draft ticket?")) return;
+  // Remove its photos from storage first.
+  const photos = state.ticketPhotos.filter((p) => p.ticket_id === id);
+  for (const p of photos) await deleteFile(p.storage_path);
+  await sb.from("tickets").delete().eq("id", id);
   closeOverlays();
   await loadData();
   refreshActiveView();
+}
+
+async function onTicketPhotoChosen(e, ticketId) {
+  const file = e.target.files[0];
+  if (!file) return;
+  setMsg("ticket-photo-msg", "Uploading…", true);
+  try {
+    const path = await uploadFile(file, `tickets/${ticketId}`);
+    const { error } = await sb.from("ticket_photos").insert({
+      ticket_id: ticketId, storage_path: path, uploaded_by: me.id,
+    });
+    if (error) { await deleteFile(path); throw error; }
+    await loadData();
+    openTicket(ticketId);
+  } catch (err) {
+    setMsg("ticket-photo-msg", "⚠️ " + (err.message || "Upload failed"), false);
+  }
+}
+
+async function deleteTicketPhoto(photoId) {
+  const photo = state.ticketPhotos.find((p) => p.id === photoId);
+  if (!photo) return;
+  await sb.from("ticket_photos").delete().eq("id", photoId);
+  await deleteFile(photo.storage_path);
+  await loadData();
+  openTicket(photo.ticket_id);
+}
+
+/* ---------- Ticket create / edit ---------- */
+function openTicketModal(ticket) {
+  $("#ticket-modal-title").textContent = ticket ? "Edit ticket" : "Log a ticket";
+  $("#ticket-id").value = ticket?.id || "";
+  // Unit dropdown: units the user may log against (RLS also enforces).
+  const unitIds = isTrustee() ? state.units.map((u) => u.id) : [...myUnitIds()];
+  const units = state.units.filter((u) => unitIds.includes(u.id));
+  $("#ticket-unit").innerHTML = units
+    .map((u) => `<option value="${u.id}" ${ticket?.unit_id === u.id ? "selected" : ""}>${esc(u.number)}</option>`).join("");
+  // Type dropdown (active types)
+  $("#ticket-type").innerHTML = state.ticketTypes.filter((tt) => tt.active)
+    .map((tt) => `<option value="${tt.id}" ${ticket?.type_id === tt.id ? "selected" : ""}>${esc(tt.name)}</option>`).join("");
+  $("#ticket-heading").value = ticket?.heading || "";
+  $("#ticket-description").value = ticket?.description || "";
+  $("#ticket-msg").textContent = "";
+  $("#ticket-modal").classList.add("active");
+}
+
+$("#ticket-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#ticket-id").value;
+  const payload = {
+    unit_id: $("#ticket-unit").value,
+    type_id: $("#ticket-type").value || null,
+    heading: $("#ticket-heading").value.trim(),
+    description: $("#ticket-description").value.trim(),
+  };
+  let savedId = id;
+  if (id) {
+    const { error } = await sb.from("tickets").update(payload).eq("id", id);
+    if (error) { setMsg("ticket-msg", "⚠️ " + error.message, false); return; }
+  } else {
+    const { data, error } = await sb.from("tickets").insert({
+      ...payload, logged_by: me.id, logged_by_role: me.role, status: "create",
+    }).select().single();
+    if (error) { setMsg("ticket-msg", "⚠️ " + error.message, false); return; }
+    savedId = data.id;
+  }
+  closeOverlays();
+  await loadData();
+  openTicket(savedId); // open so logger can add photos / submit
 });
 
 $("#unit-form").addEventListener("submit", async (e) => {
@@ -1338,21 +1512,20 @@ document.addEventListener("click", async (e) => {
   const t = e.target;
   if (t.dataset.view) showView(t.dataset.view);
   if (t.hasAttribute("data-close")) closeOverlays();
-  if (t.hasAttribute("data-new-request")) openRequestModal();
+  if (t.hasAttribute("data-new-ticket")) openTicketModal(null);
 
-  const card = t.closest("[data-open-request]");
-  if (card) openDetail(card.dataset.openRequest);
+  const tcard = t.closest("[data-open-ticket]");
+  if (tcard) openTicket(tcard.dataset.openTicket);
 
-  if (t.dataset.setStatus) {
-    const [id, s] = t.dataset.setStatus.split("|");
-    setStatus(id, s);
+  if (t.dataset.editTicket) openTicketModal(state.tickets.find((x) => x.id === t.dataset.editTicket));
+  if (t.dataset.submitTicket) submitTicket(t.dataset.submitTicket);
+  if (t.dataset.deleteTicket) deleteTicket(t.dataset.deleteTicket);
+  if (t.dataset.ticketStatus) {
+    const [id, s] = t.dataset.ticketStatus.split("|");
+    setTicketStatus(id, s);
   }
-  if (t.dataset.deleteRequest) {
-    if (confirm("Delete this request?")) {
-      await sb.from("requests").delete().eq("id", t.dataset.deleteRequest);
-      closeOverlays(); await loadData(); refreshActiveView();
-    }
-  }
+  if (t.dataset.delTicketPhoto) deleteTicketPhoto(t.dataset.delTicketPhoto);
+
   if (t.dataset.approve) approve(t.dataset.approve);
   if (t.dataset.linkUnit) openLinkModal(t.dataset.linkUnit);
   if (t.dataset.editUnit) openUnitModal(state.units.find((u) => u.id === t.dataset.editUnit));
@@ -1370,6 +1543,7 @@ document.addEventListener("click", async (e) => {
   if (t.hasAttribute("data-add-pet")) openPetModal(null);
   if (t.dataset.editPet) openPetModal(state.pets.find((p) => p.id === t.dataset.editPet));
   if (t.dataset.delUnitPhoto) deleteUnitPhoto(t.dataset.delUnitPhoto);
+  if (t.dataset.editType) openTypeModal(state.ticketTypes.find((x) => x.id === t.dataset.editType));
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);

@@ -108,28 +108,39 @@
     </div>
   </section>
 
-  <!-- Modals (same structure, role-aware) -->
-  <div class="modal-overlay" id="request-modal">
+  <!-- Ticket create/edit modal -->
+  <div class="modal-overlay" id="ticket-modal">
     <div class="modal">
-      <h3 id="request-modal-title">Log request</h3>
-      <form id="request-form">
-        <input type="hidden" id="request-id" />
-        <label>Unit <select id="request-unit" required></select></label>
-        <label>Category
-          <select id="request-category">
-            <option>Maintenance</option>
-            <option>Complaint</option>
-            <option>Billing / Levies</option>
-            <option>Access / Security</option>
-            <option>Garden / Grounds</option>
-            <option>General query</option>
-          </select>
-        </label>
-        <label>Summary <input id="request-title" required placeholder="e.g. Leaking geyser" /></label>
-        <label>Details <textarea id="request-details" rows="3"></textarea></label>
+      <h3 id="ticket-modal-title">Log a ticket</h3>
+      <form id="ticket-form">
+        <input type="hidden" id="ticket-id" />
+        <label>Unit <select id="ticket-unit" required></select></label>
+        <label>Type <select id="ticket-type" required></select></label>
+        <label>Heading <input id="ticket-heading" required placeholder="e.g. Leaking geyser" /></label>
+        <label>Detailed description <textarea id="ticket-description" rows="4"></textarea></label>
+        <p class="muted tiny">After saving, you can attach photos and then Submit &amp; send the ticket to the trustees.</p>
+        <p id="ticket-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
-          <button type="submit" class="btn primary">Save request</button>
+          <button type="submit" class="btn primary">Save ticket</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Ticket type maintenance modal -->
+  <div class="modal-overlay" id="type-modal">
+    <div class="modal">
+      <h3 id="type-modal-title">Add type</h3>
+      <form id="type-form">
+        <input type="hidden" id="type-id" />
+        <label>Name <input id="type-name" required placeholder="e.g. Maintenance" /></label>
+        <label>Sort order <input id="type-order" type="number" min="0" /></label>
+        <label class="check"><input id="type-active" type="checkbox" checked /> Active (shown when logging tickets)</label>
+        <p id="type-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save type</button>
         </div>
       </form>
     </div>
