@@ -39,6 +39,11 @@ in the SQL Editor the same way:
 - **`07_phase4_photos.sql`** — Unit photos (many per unit), plus RLS so
   trustees manage all photos and owners manage their own unit's photos.
   **Also requires the Storage bucket setup in Step 6 above.**
+- **`09_phase5_resident_permissions.sql`** — role-based resident editing:
+  owners can edit their unit's owners/tenants/occupants/pets/photos (active);
+  tenants can edit tenants/occupants/pets and view photos (no owner data);
+  gardeners/service providers view unit basics + photos only. Residents
+  only ever see ACTIVE records; trustees keep full access incl. history.
 
 If each run says *Success. No rows returned*, you're good.
 

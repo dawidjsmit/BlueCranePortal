@@ -1200,24 +1200,57 @@ $("#link-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const profileId = $("#link-profile-id").value;
   const unitId = $("#link-unit").value;
-  const relation = $("#link-relation").value;
+  const relation = $("#link-relation").value; // 'owner' | 'tenant'
   if (!unitId) return;
-  const { error } = await sb.from("unit_members").insert({
+  const msg = $("#link-msg");
+  const profile = state.profiles.find((p) => p.id === profileId);
+
+  // 1) Record membership (used for permission checks + Linked-users view).
+  const { error: memErr } = await sb.from("unit_members").insert({
     unit_id: unitId, profile_id: profileId, relation,
   });
-  const msg = $("#link-msg");
-  if (error) {
-    // Most common error: this person is already linked to that unit.
-    msg.textContent = error.message.includes("duplicate")
-      ? "This person is already linked to that unit."
-      : "⚠️ " + error.message;
+  if (memErr && !memErr.message.includes("duplicate")) {
+    msg.textContent = "⚠️ " + memErr.message;
     msg.className = "login-msg err";
     return;
   }
-  msg.textContent = "✅ Linked!";
+
+  // 2) Option (a): attach to an existing matching record on this unit
+  //    (same email, not yet linked), else create a new registry record.
+  const table = relation === "tenant" ? "tenants" : "owners";
+  const pool = relation === "tenant" ? state.tenants : state.owners;
+  const email = (profile?.email || "").toLowerCase();
+
+  const existing = pool.find((r) =>
+    r.unit_id === unitId && !r.profile_id &&
+    (r.email || "").toLowerCase() === email && email);
+
+  let regErr = null;
+  if (existing) {
+    ({ error: regErr } = await sb.from(table).update({ profile_id: profileId }).eq("id", existing.id));
+  } else {
+    // Derive first/last name from the profile's full name.
+    const parts = (profile?.full_name || "").trim().split(/\s+/);
+    const first = parts.length > 1 ? parts.slice(0, -1).join(" ") : (parts[0] || profile?.email || "User");
+    const last = parts.length > 1 ? parts[parts.length - 1] : "";
+    const base = {
+      unit_id: unitId, profile_id: profileId,
+      first_name: first, last_name: last,
+      email: profile?.email || null, is_occupant: true, active: true,
+    };
+    ({ error: regErr } = await sb.from(table).insert(base));
+  }
+  if (regErr) {
+    msg.textContent = "Linked, but could not create the " + relation + " record: " + regErr.message;
+    msg.className = "login-msg err";
+    await loadData();
+    return;
+  }
+
+  msg.textContent = `✅ Linked and created ${relation} record!`;
   msg.className = "login-msg ok";
   await loadData();
-  setTimeout(() => { closeOverlays(); renderPeople(); }, 700);
+  setTimeout(() => { closeOverlays(); renderPeople(); }, 900);
 });
 
 /* ---------- Delegated events ---------- */
