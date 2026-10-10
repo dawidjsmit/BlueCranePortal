@@ -36,6 +36,9 @@ in the SQL Editor the same way:
   relationship + related owner/tenant) and Pets (type/breed/gender/colour/
   sterilised; photo reserved for Phase 4). Owners/tenants flagged
   "is occupant" are auto-listed as occupants in the app (not duplicated).
+- **`07_phase4_photos.sql`** — Unit photos (many per unit), plus RLS so
+  trustees manage all photos and owners manage their own unit's photos.
+  **Also requires the Storage bucket setup in Step 6 above.**
 
 If each run says *Success. No rows returned*, you're good.
 
@@ -88,6 +91,47 @@ own account once, manually:
 
 3. Refresh the app — you now have the full trustee dashboard, including
    the screen to approve everyone else and link them to units.
+
+## Step 6 — Storage for photos (needed for Phase 4)
+
+Photos (unit photos, pet photos, layout drawings) are files, so they live
+in **Supabase Storage**. One-time setup:
+
+1. Left sidebar → **Storage** → **New bucket**.
+   - **Name:** `photos` (exactly this)
+   - **Public bucket:** **ON** (so images display by URL; uploads are still
+     restricted by the policies below)
+   - Create it.
+2. Still in **Storage**, open the **Policies** tab for the `photos` bucket
+   and add these (there's a "New policy" → "For full customization" option;
+   paste the USING / WITH CHECK expressions):
+
+   **Allow public read** (SELECT):
+   ```
+   bucket_id = 'photos'
+   ```
+
+   **Allow authenticated upload** (INSERT), WITH CHECK:
+   ```
+   bucket_id = 'photos' AND auth.role() = 'authenticated'
+   ```
+
+   **Allow authenticated delete** (DELETE), USING:
+   ```
+   bucket_id = 'photos' AND auth.role() = 'authenticated'
+   ```
+
+   > The app layer (and the `unit_photos` table policies in
+   > `07_phase4_photos.sql`) enforce the finer rule — trustees manage all
+   > photos, owners manage their own unit's photos. These bucket policies
+   > just allow signed-in users to put/remove files; the table policies
+   > decide who may attach them to what.
+
+3. In the **SQL Editor**, run **`07_phase4_photos.sql`** (creates the
+   `unit_photos` table + its row-level security, and the `is_unit_owner`
+   helper).
+
+That's it — the app's upload/delete buttons will now work.
 
 ---
 

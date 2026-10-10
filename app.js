@@ -38,7 +38,7 @@ const PET_TYPE_LABEL = { dog: "Dog", cat: "Cat", other: "Other" };
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [] };
 let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
@@ -243,7 +243,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, requests, profiles, layouts, owners, tenants, occupants, pets] = await Promise.all([
+  const [units, requests, profiles, layouts, owners, tenants, occupants, pets, unitPhotos] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("requests").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -252,6 +252,7 @@ async function loadData() {
     sb.from("tenants").select("*").order("last_name"),
     sb.from("occupants").select("*").order("last_name"),
     sb.from("pets").select("*").order("name"),
+    sb.from("unit_photos").select("*").order("created_at"),
   ]);
   state.units = units.data || [];
   state.requests = requests.data || [];
@@ -261,6 +262,26 @@ async function loadData() {
   state.tenants = tenants.data || [];
   state.occupants = occupants.data || [];
   state.pets = pets.data || [];
+  state.unitPhotos = unitPhotos.data || [];
+}
+
+/* ---------- Storage helpers (Phase 4) ---------- */
+const BUCKET = "photos";
+// Public URL for a stored file path.
+function publicUrl(path) {
+  if (!path) return "";
+  return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+}
+// Upload a File to a folder; returns the stored path (or throws).
+async function uploadFile(file, folder) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const { error } = await sb.storage.from(BUCKET).upload(path, file, { upsert: false });
+  if (error) throw error;
+  return path;
+}
+async function deleteFile(path) {
+  if (path) await sb.storage.from(BUCKET).remove([path]);
 }
 
 /* ---------- Views ---------- */
@@ -427,7 +448,70 @@ function renderUnitDetail(unitId) {
       <div class="panel-head"><h2>🐾 Pets</h2>
         <button class="btn primary small" data-add-pet>+ Add pet</button></div>
       ${petTable(unitId)}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>📷 Photos</h2>
+        ${canManageUnitPhotos(unitId)
+          ? `<label class="btn primary small upload-label">+ Add photo
+               <input type="file" accept="image/*" id="unit-photo-input" hidden /></label>`
+          : ""}
+      </div>
+      <p class="muted tiny">Photos of the unit and its exclusive-use area.</p>
+      <p id="unit-photo-msg" class="login-msg"></p>
+      ${unitPhotoGallery(unitId)}
     </div>`;
+
+  // Wire the hidden file input (added fresh each render).
+  const input = $("#unit-photo-input");
+  if (input) input.addEventListener("change", (e) => onUnitPhotoChosen(e, unitId));
+}
+
+// Trustees always; owners of this unit too.
+function canManageUnitPhotos(unitId) {
+  if (isTrustee()) return true;
+  return state.owners.some((o) => o.unit_id === unitId && o.profile_id === me.id && o.active);
+}
+
+function unitPhotoGallery(unitId) {
+  const photos = state.unitPhotos.filter((p) => p.unit_id === unitId);
+  if (!photos.length) return `<div class="empty">No photos yet.</div>`;
+  const canManage = canManageUnitPhotos(unitId);
+  return `<div class="photo-grid">
+    ${photos.map((p) => `<figure class="photo-item">
+      <a href="${publicUrl(p.storage_path)}" target="_blank" rel="noopener">
+        <img src="${publicUrl(p.storage_path)}" alt="${esc(p.caption || "Unit photo")}" loading="lazy" />
+      </a>
+      ${canManage ? `<button class="photo-del" title="Delete" data-del-unit-photo="${p.id}">✕</button>` : ""}
+    </figure>`).join("")}
+  </div>`;
+}
+
+async function onUnitPhotoChosen(e, unitId) {
+  const file = e.target.files[0];
+  if (!file) return;
+  setMsg("unit-photo-msg", "Uploading…", true);
+  try {
+    const path = await uploadFile(file, `units/${unitId}`);
+    const { error } = await sb.from("unit_photos").insert({
+      unit_id: unitId, storage_path: path, uploaded_by: me.id,
+    });
+    if (error) { await deleteFile(path); throw error; }
+    await loadData();
+    renderUnitDetail(unitId);
+  } catch (err) {
+    setMsg("unit-photo-msg", "⚠️ " + (err.message || "Upload failed"), false);
+  }
+}
+
+async function deleteUnitPhoto(photoId) {
+  const photo = state.unitPhotos.find((p) => p.id === photoId);
+  if (!photo) return;
+  if (!confirm("Delete this photo?")) return;
+  await sb.from("unit_photos").delete().eq("id", photoId);
+  await deleteFile(photo.storage_path);
+  await loadData();
+  renderUnitDetail(photo.unit_id);
 }
 
 /* Build the combined list of occupants for a unit:
@@ -680,6 +764,10 @@ function openPetModal(pet) {
   const currentVal = pet ? `${pet.holder_kind}|${pet.holder_id}` : "";
   $("#pet-holder").innerHTML = `<option value="">— choose —</option>` +
     holders.map((h) => `<option value="${h.v}" ${h.v === currentVal ? "selected" : ""}>${esc(h.label)}</option>`).join("");
+  $("#pet-photo-input").value = "";
+  $("#pet-photo-preview").innerHTML = pet?.photo_path
+    ? `<img src="${publicUrl(pet.photo_path)}" alt="${esc(pet.name)}" />`
+    : `<span class="muted tiny">No photo yet.</span>`;
   $("#pet-msg").textContent = "";
   togglePetOther();
   $("#pet-modal").classList.add("active");
@@ -688,8 +776,22 @@ function openPetModal(pet) {
 $("#pet-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = $("#pet-id").value;
+  const existing = id ? state.pets.find((p) => p.id === id) : null;
   const [holderKind, holderId] = ($("#pet-holder").value || "|").split("|");
   const sterVal = $("#pet-sterilised").value;
+
+  // Handle a newly chosen photo (optional).
+  let photoPath = existing?.photo_path || null;
+  const file = $("#pet-photo-input").files[0];
+  if (file) {
+    setMsg("pet-msg", "Uploading photo…", true);
+    try {
+      const newPath = await uploadFile(file, `pets`);
+      if (photoPath) await deleteFile(photoPath); // replace old
+      photoPath = newPath;
+    } catch (err) { setMsg("pet-msg", "⚠️ " + (err.message || "Upload failed"), false); return; }
+  }
+
   const payload = {
     unit_id: currentUnitId,
     holder_kind: holderKind || "occupant",
@@ -701,6 +803,7 @@ $("#pet-form").addEventListener("submit", async (e) => {
     gender: $("#pet-gender").value,
     colour: $("#pet-colour").value.trim() || null,
     sterilised: sterVal === "" ? null : (sterVal === "yes"),
+    photo_path: photoPath,
   };
   const { error } = id
     ? await sb.from("pets").update(payload).eq("id", id)
@@ -737,10 +840,10 @@ function renderLayouts() {
           <div class="rc-meta">${esc(l.description || "No description")}</div></div>
         <button class="btn ghost small" data-edit-layout="${l.id}">Edit</button>
       </div>
+      ${l.drawing_path ? `<a href="${publicUrl(l.drawing_path)}" target="_blank" rel="noopener" class="layout-drawing"><img src="${publicUrl(l.drawing_path)}" alt="${esc(l.code)} drawing" loading="lazy" /></a>` : ""}
       <div class="linked-row">
         <span class="muted tiny">Units with this layout (${units.length}):</span> ${unitChips}
       </div>
-      <div class="muted tiny" style="margin-top:6px">🖼️ Drawing upload coming in a later phase.</div>
     </div>`;
   }).join("");
 
@@ -760,6 +863,10 @@ function openLayoutModal(layout) {
   $("#layout-id").value = layout?.id || "";
   $("#layout-code").value = layout?.code || "";
   $("#layout-description").value = layout?.description || "";
+  $("#layout-drawing-input").value = "";
+  $("#layout-drawing-preview").innerHTML = layout?.drawing_path
+    ? `<img src="${publicUrl(layout.drawing_path)}" alt="${esc(layout.code)} drawing" />`
+    : `<span class="muted tiny">No drawing yet.</span>`;
   $("#layout-msg").textContent = "";
   $("#layout-modal").classList.add("active");
 }
@@ -767,9 +874,24 @@ function openLayoutModal(layout) {
 $("#layout-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = $("#layout-id").value;
+  const existing = id ? layoutById(id) : null;
+
+  // Optional drawing upload.
+  let drawingPath = existing?.drawing_path || null;
+  const file = $("#layout-drawing-input").files[0];
+  if (file) {
+    setMsg("layout-msg", "Uploading drawing…", true);
+    try {
+      const newPath = await uploadFile(file, `layouts`);
+      if (drawingPath) await deleteFile(drawingPath);
+      drawingPath = newPath;
+    } catch (err) { setMsg("layout-msg", "⚠️ " + (err.message || "Upload failed"), false); return; }
+  }
+
   const payload = {
     code: $("#layout-code").value.trim(),
     description: $("#layout-description").value.trim(),
+    drawing_path: drawingPath,
   };
   const { error } = id
     ? await sb.from("unit_layouts").update(payload).eq("id", id)
@@ -1010,6 +1132,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editOccupant) openOccupantModal(state.occupants.find((oc) => oc.id === t.dataset.editOccupant));
   if (t.hasAttribute("data-add-pet")) openPetModal(null);
   if (t.dataset.editPet) openPetModal(state.pets.find((p) => p.id === t.dataset.editPet));
+  if (t.dataset.delUnitPhoto) deleteUnitPhoto(t.dataset.delUnitPhoto);
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
