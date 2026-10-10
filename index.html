@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Complex Comms — Unit Communication Tracker</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="logo">🏢</span>
+        <div>
+          <h1>Complex Comms</h1>
+          <p class="subtitle">Unit communication tracker for trustees</p>
+        </div>
+      </div>
+      <nav class="tabs">
+        <button class="tab-btn active" data-view="dashboard">Dashboard</button>
+        <button class="tab-btn" data-view="units">Units</button>
+        <button class="tab-btn" data-view="requests">Requests</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- DASHBOARD VIEW -->
+    <section id="view-dashboard" class="view active">
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>⏳ Who is waiting on what</h2>
+          <span class="hint">Open items that need your attention, oldest first</span>
+        </div>
+        <div id="waiting-list" class="request-list"></div>
+      </div>
+    </section>
+
+    <!-- UNITS VIEW -->
+    <section id="view-units" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>🏠 Units</h2>
+          <button class="btn primary" id="add-unit-btn">+ Add unit</button>
+        </div>
+        <div class="table-wrap">
+          <table id="units-table">
+            <thead>
+              <tr>
+                <th>Unit</th>
+                <th>Owner</th>
+                <th>Tenant</th>
+                <th>Contact</th>
+                <th>Open requests</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- REQUESTS VIEW -->
+    <section id="view-requests" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>🎫 Requests</h2>
+          <button class="btn primary" id="add-request-btn">+ Log request</button>
+        </div>
+        <div class="filters">
+          <label>Status
+            <select id="filter-status">
+              <option value="">All</option>
+              <option value="Open">Open</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Waiting on Resident">Waiting on Resident</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+          </label>
+          <label>Unit
+            <select id="filter-unit"><option value="">All units</option></select>
+          </label>
+          <input type="search" id="filter-search" placeholder="Search text…" />
+        </div>
+        <div id="requests-list" class="request-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Unit modal -->
+  <div class="modal-overlay" id="unit-modal">
+    <div class="modal">
+      <h3 id="unit-modal-title">Add unit</h3>
+      <form id="unit-form">
+        <input type="hidden" id="unit-id" />
+        <label>Unit number / name <input id="unit-number" required placeholder="e.g. 12A" /></label>
+        <div class="row">
+          <label>Owner name <input id="unit-owner" placeholder="Jane Smith" /></label>
+          <label>Owner phone <input id="unit-owner-phone" placeholder="+27 ..." /></label>
+        </div>
+        <div class="row">
+          <label>Tenant name <input id="unit-tenant" placeholder="(if rented out)" /></label>
+          <label>Tenant phone <input id="unit-tenant-phone" placeholder="+27 ..." /></label>
+        </div>
+        <label>Notes <textarea id="unit-notes" rows="2" placeholder="Parking bay, pets, etc."></textarea></label>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save unit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Request modal -->
+  <div class="modal-overlay" id="request-modal">
+    <div class="modal">
+      <h3 id="request-modal-title">Log request</h3>
+      <form id="request-form">
+        <input type="hidden" id="request-id" />
+        <label>Unit
+          <select id="request-unit" required></select>
+        </label>
+        <label>Category
+          <select id="request-category">
+            <option>Maintenance</option>
+            <option>Complaint</option>
+            <option>Billing / Levies</option>
+            <option>Access / Security</option>
+            <option>General query</option>
+          </select>
+        </label>
+        <label>Summary <input id="request-title" required placeholder="e.g. Leaking geyser" /></label>
+        <label>Details <textarea id="request-details" rows="3" placeholder="What was reported…"></textarea></label>
+        <label>Status
+          <select id="request-status">
+            <option>Open</option>
+            <option>In Progress</option>
+            <option>Waiting on Resident</option>
+            <option>Resolved</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save request</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Request detail / timeline modal -->
+  <div class="modal-overlay" id="detail-modal">
+    <div class="modal wide">
+      <div id="detail-content"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close>Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
