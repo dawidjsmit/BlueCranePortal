@@ -310,3 +310,7 @@ tbody tr:hover { background: #f9fafb; }
 .layout-drawing img {
   max-width: 220px; max-height: 160px; border-radius: 8px; border: 1px solid var(--line);
 }
+
+/* Clickable unit chip (global list screens) */
+.chip-btn { border: none; cursor: pointer; font-family: inherit; }
+.chip-btn:hover { background: #dbeafe; }

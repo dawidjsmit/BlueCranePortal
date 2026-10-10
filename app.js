@@ -38,7 +38,7 @@ const PET_TYPE_LABEL = { dog: "Dog", cat: "Cat", other: "Other" };
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [] };
 let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
@@ -231,6 +231,10 @@ function buildTabs() {
   const tabs = [{ id: "dashboard", label: "Dashboard" }, { id: "requests", label: "Requests" }];
   if (isTrustee()) {
     tabs.push({ id: "units", label: "Units" });
+    tabs.push({ id: "owners", label: "Owners" });
+    tabs.push({ id: "tenants", label: "Tenants" });
+    tabs.push({ id: "occupants", label: "Occupants" });
+    tabs.push({ id: "pets", label: "Pets" });
     tabs.push({ id: "layouts", label: "Layouts" });
     tabs.push({ id: "users", label: "Users" });
   }
@@ -243,7 +247,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, requests, profiles, layouts, owners, tenants, occupants, pets, unitPhotos] = await Promise.all([
+  const [units, requests, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("requests").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -253,6 +257,7 @@ async function loadData() {
     sb.from("occupants").select("*").order("last_name"),
     sb.from("pets").select("*").order("name"),
     sb.from("unit_photos").select("*").order("created_at"),
+    sb.from("unit_members").select("*"),
   ]);
   state.units = units.data || [];
   state.requests = requests.data || [];
@@ -263,6 +268,7 @@ async function loadData() {
   state.occupants = occupants.data || [];
   state.pets = pets.data || [];
   state.unitPhotos = unitPhotos.data || [];
+  state.members = members.data || [];
 }
 
 /* ---------- Storage helpers (Phase 4) ---------- */
@@ -291,6 +297,10 @@ function showView(name) {
     dashboard: renderDashboard,
     requests: renderRequests,
     units: renderUnits,
+    owners: renderOwnersList,
+    tenants: renderTenantsList,
+    occupants: renderOccupantsList,
+    pets: renderPetsList,
     layouts: renderLayouts,
     users: renderPeople,
   }[name];
@@ -369,8 +379,7 @@ function renderUnits() {
             <td>${owners} owner${owners === 1 ? "" : "s"}, ${tenants} tenant${tenants === 1 ? "" : "s"}</td>
             <td><span class="badge-count ${open ? "" : "zero"}">${open}</span></td>
             <td style="text-align:right">
-              <button class="btn ghost small" data-open-unit="${u.id}">Open</button>
-              <button class="btn ghost small" data-edit-unit="${u.id}">Edit</button></td></tr>`;
+              <button class="btn ghost small" data-open-unit="${u.id}">Open</button></td></tr>`;
         }).join("") || `<tr><td colspan="5" class="empty">No units yet.</td></tr>`}
       </tbody></table></div>
     </div>`;
@@ -403,6 +412,26 @@ function contactLine(p) {
   return bits.join(" · ") || '<span class="muted">no contact</span>';
 }
 
+// Read-only: login users linked to a unit (via unit_members).
+function unitUsersTable(unitId) {
+  const links = state.members.filter((m) => m.unit_id === unitId);
+  if (!links.length) return `<div class="empty">No login users linked to this unit.</div>`;
+  return `<div class="table-wrap"><table><thead><tr>
+      <th>User</th><th>Account role</th><th>Linked as</th>
+    </tr></thead><tbody>
+    ${links.map((m) => {
+      const p = state.profiles.find((x) => x.id === m.profile_id);
+      const name = p ? (p.full_name || p.email) : "(unknown user)";
+      const role = p ? (ROLE_LABEL[p.role] || p.role) : "—";
+      return `<tr>
+        <td><strong>${esc(name)}</strong>${p && p.full_name ? `<div class="muted tiny">${esc(p.email)}</div>` : ""}</td>
+        <td><span class="role-chip ${p ? p.role : ""}">${esc(role)}</span></td>
+        <td>${esc(ROLE_LABEL[m.relation] || m.relation)}</td>
+      </tr>`;
+    }).join("")}
+  </tbody></table></div>`;
+}
+
 function renderUnitDetail(unitId) {
   currentUnitId = unitId;
   const u = state.units.find((x) => x.id === unitId);
@@ -423,6 +452,18 @@ function renderUnitDetail(unitId) {
         <dt>Layout</dt><dd>${layout ? esc(layout.code) + (layout.description ? " — " + esc(layout.description) : "") : "—"}</dd>
         <dt>Notes</dt><dd>${esc(u.notes || "—")}</dd>
       </dl>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>📷 Photos</h2>
+        ${canManageUnitPhotos(unitId)
+          ? `<label class="btn primary small upload-label">+ Add photo
+               <input type="file" accept="image/*" id="unit-photo-input" hidden /></label>`
+          : ""}
+      </div>
+      <p class="muted tiny">Photos of the unit and its exclusive-use area.</p>
+      <p id="unit-photo-msg" class="login-msg"></p>
+      ${unitPhotoGallery(unitId)}
     </div>
 
     <div class="panel">
@@ -451,15 +492,9 @@ function renderUnitDetail(unitId) {
     </div>
 
     <div class="panel">
-      <div class="panel-head"><h2>📷 Photos</h2>
-        ${canManageUnitPhotos(unitId)
-          ? `<label class="btn primary small upload-label">+ Add photo
-               <input type="file" accept="image/*" id="unit-photo-input" hidden /></label>`
-          : ""}
-      </div>
-      <p class="muted tiny">Photos of the unit and its exclusive-use area.</p>
-      <p id="unit-photo-msg" class="login-msg"></p>
-      ${unitPhotoGallery(unitId)}
+      <div class="panel-head"><h2>🔐 Linked users</h2>
+        <span class="hint">Login accounts linked to this unit (manage on the Users tab)</span></div>
+      ${unitUsersTable(unitId)}
     </div>`;
 
   // Wire the hidden file input (added fresh each render).
@@ -907,6 +942,94 @@ $("#layout-form").addEventListener("submit", async (e) => {
   refreshActiveView();
 });
 
+/* ---------- Global list screens (link back to their unit) ---------- */
+// A clickable unit chip that opens that unit's detail page.
+function unitLinkChip(unitId) {
+  const u = state.units.find((x) => x.id === unitId);
+  if (!u) return `<span class="muted tiny">—</span>`;
+  return `<button class="chip chip-btn" data-open-unit="${u.id}">${esc(u.number)}</button>`;
+}
+
+function listPanel(title, headers, rows) {
+  return `<div class="panel">
+    <div class="panel-head"><h2>${title}</h2>
+      <span class="hint">Click a unit to open it</span></div>
+    <div class="table-wrap"><table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>${rows || `<tr><td colspan="${headers.length}" class="empty">Nothing to show yet.</td></tr>`}</tbody></table></div>
+  </div>`;
+}
+
+function renderOwnersList() {
+  const rows = state.owners.slice()
+    .sort((a, b) => (b.active - a.active) || fullName(a).localeCompare(fullName(b)))
+    .map((o) => `<tr class="${o.active ? "" : "inactive-row"}">
+      <td><strong>${esc(fullName(o))}</strong></td>
+      <td>${unitLinkChip(o.unit_id)}</td>
+      <td>${contactLine(o)}</td>
+      <td>${fmtDay(o.owner_since)}</td>
+      <td>${o.is_occupant ? "Yes" : "No"}</td>
+      <td>${o.active ? '<span class="pill approved">Active</span>' : `<span class="pill rejected">Left ${fmtDay(o.left_on)}</span>`}</td>
+    </tr>`).join("");
+  $("#main").innerHTML = listPanel("👤 Owners",
+    ["Name", "Unit", "Contact", "Since", "Occupant", "Status"], rows);
+}
+
+function renderTenantsList() {
+  const rows = state.tenants.slice()
+    .sort((a, b) => (b.active - a.active) || fullName(a).localeCompare(fullName(b)))
+    .map((t) => `<tr class="${t.active ? "" : "inactive-row"}">
+      <td><strong>${esc(fullName(t))}</strong></td>
+      <td>${unitLinkChip(t.unit_id)}</td>
+      <td>${contactLine(t)}</td>
+      <td>${fmtDay(t.tenant_since)}</td>
+      <td>${t.lease_with === "agency" ? "Agency: " + esc(t.agency_name || "—") : "Direct with owner"}</td>
+      <td>${t.active ? '<span class="pill approved">Active</span>' : `<span class="pill rejected">Left ${fmtDay(t.left_on)}</span>`}</td>
+    </tr>`).join("");
+  $("#main").innerHTML = listPanel("🔑 Tenants",
+    ["Name", "Unit", "Contact", "Since", "Lease", "Status"], rows);
+}
+
+function renderOccupantsList() {
+  // Combine real occupant records across all units (auto-listed owners/tenants
+  // are shown on their own screens; here we list the household-member records).
+  const rows = state.occupants.slice()
+    .sort((a, b) => (b.active - a.active) || fullName(a).localeCompare(fullName(b)))
+    .map((oc) => `<tr class="${oc.active ? "" : "inactive-row"}">
+      <td><strong>${esc(fullName(oc))}</strong></td>
+      <td>${unitLinkChip(oc.unit_id)}</td>
+      <td>${esc(RELATION_LABEL[oc.relationship] || "Occupant")}</td>
+      <td>${contactLine(oc)}</td>
+      <td>${oc.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Inactive</span>'}</td>
+    </tr>`).join("");
+  $("#main").innerHTML = listPanel("🧑‍🤝‍🧑 Occupants (household members)",
+    ["Name", "Unit", "Relationship", "Contact", "Status"], rows);
+}
+
+function renderPetsList() {
+  const rows = state.pets.slice()
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+    .map((p) => `<tr>
+      <td><strong>${esc(p.name)}</strong></td>
+      <td>${unitLinkChip(p.unit_id)}</td>
+      <td>${esc(p.pet_type === "other" ? (p.type_other || "Other") : capitalize(p.pet_type))}</td>
+      <td>${esc(p.breed || "—")}</td>
+      <td>${esc(holderName(p))}</td>
+      <td>${p.sterilised == null ? "—" : (p.sterilised ? "Yes" : "No")}</td>
+    </tr>`).join("");
+  $("#main").innerHTML = listPanel("🐾 Pets",
+    ["Name", "Unit", "Type", "Breed", "Belongs to", "Sterilised"], rows);
+}
+
+// Units a given user (profile) is linked to, as chips.
+function unitsForUser(profileId) {
+  const links = state.members.filter((m) => m.profile_id === profileId);
+  if (!links.length) return `<span class="muted tiny">—</span>`;
+  return links.map((m) => {
+    const u = state.units.find((x) => x.id === m.unit_id);
+    return u ? `<span class="chip">${esc(u.number)}</span>` : "";
+  }).join(" ");
+}
+
 function renderPeople() {
   const rows = state.profiles.map((p) => `
     <tr>
@@ -916,6 +1039,7 @@ function renderPeople() {
           ${Object.keys(ROLE_LABEL).map((r) => `<option value="${r}" ${p.role === r ? "selected" : ""}>${ROLE_LABEL[r]}</option>`).join("")}
         </select>
       </td>
+      <td>${unitsForUser(p.id)}</td>
       <td><span class="pill ${p.status}">${p.status}</span></td>
       <td style="text-align:right">
         ${p.status !== "approved" ? `<button class="btn primary small" data-approve="${p.id}">Approve</button>` : ""}
@@ -925,11 +1049,11 @@ function renderPeople() {
 
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>👥 People &amp; approvals</h2>
-        <span class="hint">Approve new sign-ups, set their role, link them to a unit</span></div>
+      <div class="panel-head"><h2>👥 Users &amp; approvals</h2>
+        <span class="hint">Approve new sign-ups, set their role, link them to units</span></div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Person</th><th>Role</th><th>Status</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No one yet.</td></tr>`}</tbody></table></div>
+        <th>User</th><th>Role</th><th>Linked units</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No one yet.</td></tr>`}</tbody></table></div>
     </div>`;
 }
 
