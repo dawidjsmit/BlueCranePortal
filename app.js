@@ -32,14 +32,22 @@ const STATUS_ORDER = ["open", "in_progress", "waiting_on_resident", "resolved"];
 let sb = null;        // supabase client
 let me = null;        // current profile row
 let state = { units: [], requests: [], profiles: [] };
+let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
 (async function boot() {
   if (!CONFIGURED) return showNotConfigured();
   sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
 
-  // Handle the magic-link redirect, then react to auth changes.
-  sb.auth.onAuthStateChange(() => route());
+  // React to auth changes. A password-reset link fires PASSWORD_RECOVERY:
+  // the user is temporarily signed in only to choose a new password.
+  sb.auth.onAuthStateChange((event) => {
+    if (event === "PASSWORD_RECOVERY") {
+      recovering = true;
+      return showSetPassword();
+    }
+    route();
+  });
   await route();
 })();
 
@@ -58,6 +66,9 @@ function showNotConfigured() {
 
 /* ---------- Routing based on auth + approval ---------- */
 async function route() {
+  // If we're mid password-reset, stay on the set-password screen.
+  if (recovering) return showSetPassword();
+
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return showLogin();
 
@@ -79,6 +90,8 @@ async function route() {
 function hideAll() {
   $("#view-login").hidden = true;
   $("#view-pending").hidden = true;
+  $("#view-forgot").hidden = true;
+  $("#view-set-password").hidden = true;
   $("#main").hidden = true;
   $("#tabs").hidden = true;
   $("#user-box").hidden = true;
@@ -87,6 +100,14 @@ function showLogin() {
   hideAll();
   $("#view-login").hidden = false;
 }
+function showForgot() {
+  hideAll();
+  $("#view-forgot").hidden = false;
+}
+function showSetPassword() {
+  hideAll();
+  $("#view-set-password").hidden = false;
+}
 function showPending() {
   hideAll();
   $("#view-pending").hidden = false;
@@ -94,20 +115,79 @@ function showPending() {
   $("#user-box").innerHTML = `<span>${esc(me.email)}</span>`;
 }
 
-$("#login-form").addEventListener("submit", async (e) => {
+const redirectUrl = () => window.location.href.split("#")[0].split("?")[0];
+function setMsg(id, text, ok) {
+  const el = $("#" + id);
+  el.textContent = text;
+  el.className = "login-msg " + (ok ? "ok" : "err");
+}
+
+/* --- Tab switching on the login card --- */
+$$("[data-login-tab]").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    const tab = btn.dataset.loginTab;
+    $$("[data-login-tab]").forEach((b) => b.classList.toggle("active", b === btn));
+    $("#login-tab-magic").hidden = tab !== "magic";
+    $("#login-tab-password").hidden = tab !== "password";
+    $("#login-msg").textContent = "";
+  }));
+
+/* --- Magic link sign-in --- */
+$("#magic-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const email = $("#login-email").value.trim();
-  const msg = $("#login-msg");
-  msg.textContent = "Sending…";
+  setMsg("login-msg", "Sending…", true);
   const { error } = await sb.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.href.split("#")[0] },
+    email: $("#magic-email").value.trim(),
+    options: { emailRedirectTo: redirectUrl() },
   });
-  msg.textContent = error
-    ? "⚠️ " + error.message
-    : "✅ Check your email for the magic link!";
-  msg.className = "login-msg " + (error ? "err" : "ok");
+  setMsg("login-msg", error ? "⚠️ " + error.message : "✅ Check your email for the magic link!", !error);
 });
+
+/* --- Password sign-in --- */
+$("#password-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setMsg("login-msg", "Signing in…", true);
+  const { error } = await sb.auth.signInWithPassword({
+    email: $("#pw-email").value.trim(),
+    password: $("#pw-password").value,
+  });
+  if (error) {
+    setMsg("login-msg",
+      "⚠️ " + (error.message.includes("Invalid")
+        ? "Email or password is incorrect. If you've never set a password, use the Magic link tab first."
+        : error.message), false);
+  }
+  // On success, onAuthStateChange -> route() takes over.
+});
+
+/* --- Forgot password --- */
+$("#forgot-link").addEventListener("click", showForgot);
+$("#forgot-back").addEventListener("click", showLogin);
+$("#forgot-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setMsg("forgot-msg", "Sending…", true);
+  const { error } = await sb.auth.resetPasswordForEmail(
+    $("#forgot-email").value.trim(),
+    { redirectTo: redirectUrl() }
+  );
+  setMsg("forgot-msg",
+    error ? "⚠️ " + error.message : "✅ Check your email for a link to reset your password.", !error);
+});
+
+/* --- Set / update password --- */
+$("#set-password-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const p1 = $("#set-pw1").value, p2 = $("#set-pw2").value;
+  if (p1 !== p2) return setMsg("set-pw-msg", "Passwords don't match.", false);
+  setMsg("set-pw-msg", "Saving…", true);
+  const { error } = await sb.auth.updateUser({ password: p1 });
+  if (error) return setMsg("set-pw-msg", "⚠️ " + error.message, false);
+  setMsg("set-pw-msg", "✅ Password saved! You can now sign in with it.", true);
+  $("#set-pw1").value = ""; $("#set-pw2").value = "";
+  recovering = false; // done; proceed into the app normally
+  setTimeout(route, 900);
+});
+$("#set-pw-skip").addEventListener("click", () => { recovering = false; route(); });
 
 $("#pending-signout").addEventListener("click", () => sb.auth.signOut());
 
@@ -119,8 +199,13 @@ async function showApp() {
   $("#user-box").innerHTML = `
     <span class="role-chip ${me.role}">${ROLE_LABEL[me.role]}</span>
     <span class="umail">${esc(me.full_name || me.email)}</span>
+    <button class="btn ghost small" id="set-pw-btn" title="Set or change your password">Set password</button>
     <button class="btn ghost small" id="signout">Sign out</button>`;
   $("#signout").addEventListener("click", () => sb.auth.signOut());
+  $("#set-pw-btn").addEventListener("click", () => {
+    // Reuse the set-password screen; skipping returns here.
+    showSetPassword();
+  });
 
   buildTabs();
   await loadData();

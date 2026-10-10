@@ -25,17 +25,24 @@ Everything here is free for a complex your size.
 
 If each run says *Success. No rows returned*, you're good.
 
-## Step 3 — Turn on magic-link email login
+## Step 3 — Turn on email login (magic link + password)
 
 1. Left sidebar → **Authentication** → **Providers**.
 2. Make sure **Email** is enabled.
-3. Under email settings, **enable "Magic Link"** (and you can turn OFF
-   "Confirm password" since we're passwordless).
+3. Under email settings, **enable "Magic Link"**. Leave the standard
+   **email + password** option enabled too — the app offers BOTH:
+   - **Magic link** — passwordless, a one-time link by email
+   - **Password** — residents who prefer a password can set one from
+     their account menu (after a first magic-link sign-in), and there's
+     a **Forgot password** reset flow.
+   You do NOT need any extra setting for passwords — email/password is on
+   by default in Supabase.
 4. Left sidebar → **Authentication → URL Configuration**:
    - Set **Site URL** to your live app, e.g.
      `https://dawidjsmit.github.io/complex-comms/`
    - Add the same URL under **Redirect URLs**.
-   (This is what makes the magic link bring people back to your app.)
+   (This is what makes both the magic link AND the password-reset link
+   bring people back to your app.)
 
 ## Step 4 — Get your two public keys
 
