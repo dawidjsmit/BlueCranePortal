@@ -95,43 +95,24 @@ own account once, manually:
 ## Step 6 — Storage for photos (needed for Phase 4)
 
 Photos (unit photos, pet photos, layout drawings) are files, so they live
-in **Supabase Storage**. One-time setup:
+in **Supabase Storage**. The easiest way — no clicking through policy
+screens — is just two SQL runs:
 
-1. Left sidebar → **Storage** → **New bucket**.
-   - **Name:** `photos` (exactly this)
-   - **Public bucket:** **ON** (so images display by URL; uploads are still
-     restricted by the policies below)
-   - Create it.
-2. Still in **Storage**, open the **Policies** tab for the `photos` bucket
-   and add these (there's a "New policy" → "For full customization" option;
-   paste the USING / WITH CHECK expressions):
+1. Open the **SQL Editor** (the same place you ran the other migrations).
+2. New query → paste all of **`08_storage_policies.sql`** → **Run**.
+   (This creates the public `photos` bucket **and** its three access
+   policies in one go.)
+3. New query → paste all of **`07_phase4_photos.sql`** → **Run**.
+   (This creates the `unit_photos` table + the finer "owners manage their
+   own unit's photos" rules.)
 
-   **Allow public read** (SELECT):
-   ```
-   bucket_id = 'photos'
-   ```
+That's it — the app's upload/delete buttons will now work. You can confirm
+the bucket exists under **Storage** in the sidebar.
 
-   **Allow authenticated upload** (INSERT), WITH CHECK:
-   ```
-   bucket_id = 'photos' AND auth.role() = 'authenticated'
-   ```
-
-   **Allow authenticated delete** (DELETE), USING:
-   ```
-   bucket_id = 'photos' AND auth.role() = 'authenticated'
-   ```
-
-   > The app layer (and the `unit_photos` table policies in
-   > `07_phase4_photos.sql`) enforce the finer rule — trustees manage all
-   > photos, owners manage their own unit's photos. These bucket policies
-   > just allow signed-in users to put/remove files; the table policies
-   > decide who may attach them to what.
-
-3. In the **SQL Editor**, run **`07_phase4_photos.sql`** (creates the
-   `unit_photos` table + its row-level security, and the `is_unit_owner`
-   helper).
-
-That's it — the app's upload/delete buttons will now work.
+> Why two files? `08` sets up the file **storage** (where images live);
+> `07` sets up the **database** records that link photos to units. The app
+> layer + `07`'s policies enforce the finer rule (trustees manage all
+> photos; owners manage their own unit's).
 
 ---
 
