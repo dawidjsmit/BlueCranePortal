@@ -28,10 +28,17 @@ const STATUS_LABEL = {
   resolved: "Resolved",
 };
 const STATUS_ORDER = ["open", "in_progress", "waiting_on_resident", "resolved"];
+const RELATION_LABEL = {
+  spouse: "Spouse",
+  child: "Child",
+  live_in_employee: "Live-in employee",
+  other: "Other",
+};
+const PET_TYPE_LABEL = { dog: "Dog", cat: "Cat", other: "Other" };
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [] };
 let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
@@ -236,13 +243,15 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, requests, profiles, layouts, owners, tenants] = await Promise.all([
+  const [units, requests, profiles, layouts, owners, tenants, occupants, pets] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("requests").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
     sb.from("unit_layouts").select("*").order("code"),
     sb.from("owners").select("*").order("last_name"),
     sb.from("tenants").select("*").order("last_name"),
+    sb.from("occupants").select("*").order("last_name"),
+    sb.from("pets").select("*").order("name"),
   ]);
   state.units = units.data || [];
   state.requests = requests.data || [];
@@ -250,6 +259,8 @@ async function loadData() {
   state.layouts = layouts.data || [];
   state.owners = owners.data || [];
   state.tenants = tenants.data || [];
+  state.occupants = occupants.data || [];
+  state.pets = pets.data || [];
 }
 
 /* ---------- Views ---------- */
@@ -403,8 +414,86 @@ function renderUnitDetail(unitId) {
       <div class="panel-head"><h2>🔑 Tenants</h2>
         <button class="btn primary small" data-add-tenant>+ Add tenant</button></div>
       ${personTable(tenants, "tenant")}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>🧑‍🤝‍🧑 Occupants</h2>
+        <button class="btn primary small" data-add-occupant>+ Add occupant</button></div>
+      <p class="muted tiny">Owners &amp; tenants marked “is occupant” appear here automatically. Add other household members (spouse, child, live-in employee) below.</p>
+      ${occupantTable(unitId)}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>🐾 Pets</h2>
+        <button class="btn primary small" data-add-pet>+ Add pet</button></div>
+      ${petTable(unitId)}
     </div>`;
 }
+
+/* Build the combined list of occupants for a unit:
+   - auto: owners & tenants with is_occupant = true (read-only here)
+   - real: rows from the occupants table (editable)
+   Returns [{kind, id, name, detail, active, record}] */
+function occupantsFor(unitId) {
+  const list = [];
+  state.owners
+    .filter((o) => o.unit_id === unitId && o.is_occupant)
+    .forEach((o) => list.push({ kind: "owner", id: o.id, name: fullName(o),
+      detail: "Owner", active: o.active, auto: true }));
+  state.tenants
+    .filter((t) => t.unit_id === unitId && t.is_occupant)
+    .forEach((t) => list.push({ kind: "tenant", id: t.id, name: fullName(t),
+      detail: "Tenant", active: t.active, auto: true }));
+  state.occupants
+    .filter((oc) => oc.unit_id === unitId)
+    .forEach((oc) => list.push({ kind: "occupant", id: oc.id, name: fullName(oc),
+      detail: RELATION_LABEL[oc.relationship] || "Occupant", active: oc.active, auto: false, record: oc }));
+  return list;
+}
+
+function occupantTable(unitId) {
+  const list = occupantsFor(unitId);
+  if (!list.length) return `<div class="empty">No occupants yet.</div>`;
+  const sorted = list.slice().sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name));
+  return `<div class="table-wrap"><table><thead><tr>
+      <th>Name</th><th>Role / relationship</th><th>Source</th><th>Status</th><th></th>
+    </tr></thead><tbody>
+    ${sorted.map((p) => `<tr class="${p.active ? "" : "inactive-row"}">
+      <td><strong>${esc(p.name)}</strong></td>
+      <td>${esc(p.detail)}</td>
+      <td>${p.auto ? '<span class="muted tiny">auto (from ' + p.kind + ')</span>' : '<span class="chip">added</span>'}</td>
+      <td>${p.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Inactive</span>'}</td>
+      <td style="text-align:right">${p.auto
+        ? '<span class="muted tiny">edit on their ' + p.kind + ' record</span>'
+        : `<button class="btn ghost small" data-edit-occupant="${p.id}">Edit</button>`}</td>
+    </tr>`).join("")}
+  </tbody></table></div>`;
+}
+
+function petTable(unitId) {
+  const pets = state.pets.filter((p) => p.unit_id === unitId);
+  if (!pets.length) return `<div class="empty">No pets recorded.</div>`;
+  return `<div class="table-wrap"><table><thead><tr>
+      <th>Name</th><th>Type</th><th>Breed</th><th>Belongs to</th><th>Sterilised</th><th></th>
+    </tr></thead><tbody>
+    ${pets.map((p) => `<tr>
+      <td><strong>${esc(p.name)}</strong></td>
+      <td>${esc(p.pet_type === "other" ? (p.type_other || "Other") : capitalize(p.pet_type))}</td>
+      <td>${esc(p.breed || "—")}</td>
+      <td>${esc(holderName(p))}</td>
+      <td>${p.sterilised == null ? "—" : (p.sterilised ? "Yes" : "No")}</td>
+      <td style="text-align:right"><button class="btn ghost small" data-edit-pet="${p.id}">Edit</button></td>
+    </tr>`).join("")}
+  </tbody></table></div>`;
+}
+
+function holderName(pet) {
+  const arr = pet.holder_kind === "owner" ? state.owners
+    : pet.holder_kind === "tenant" ? state.tenants : state.occupants;
+  const rec = arr.find((x) => x.id === pet.holder_id);
+  return rec ? fullName(rec) : "—";
+}
+function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 function personTable(people, kind) {
   if (!people.length) return `<div class="empty">No ${kind}s recorded.</div>`;
@@ -518,6 +607,113 @@ $("#tenant-form").addEventListener("submit", async (e) => {
   await loadData();
   renderUnitDetail(currentUnitId);
 });
+
+/* ----- Occupant modal ----- */
+function openOccupantModal(occupant) {
+  $("#occupant-modal-title").textContent = occupant ? "Edit occupant" : "Add occupant";
+  $("#occupant-id").value = occupant?.id || "";
+  $("#occupant-first").value = occupant?.first_name || "";
+  $("#occupant-last").value = occupant?.last_name || "";
+  $("#occupant-cell").value = occupant?.cell || "";
+  $("#occupant-email").value = occupant?.email || "";
+  $("#occupant-since").value = occupant?.occupant_since || "";
+  $("#occupant-relationship").value = occupant?.relationship || "other";
+  $("#occupant-active").checked = occupant ? !!occupant.active : true;
+  $("#occupant-left").value = occupant?.left_on || "";
+  // Related owner / tenant dropdowns, scoped to the current unit.
+  const owners = state.owners.filter((o) => o.unit_id === currentUnitId);
+  const tenants = state.tenants.filter((t) => t.unit_id === currentUnitId);
+  $("#occupant-owner").innerHTML = `<option value="">— none —</option>` +
+    owners.map((o) => `<option value="${o.id}" ${occupant?.related_owner_id === o.id ? "selected" : ""}>${esc(fullName(o))}</option>`).join("");
+  $("#occupant-tenant").innerHTML = `<option value="">— none —</option>` +
+    tenants.map((t) => `<option value="${t.id}" ${occupant?.related_tenant_id === t.id ? "selected" : ""}>${esc(fullName(t))}</option>`).join("");
+  $("#occupant-msg").textContent = "";
+  toggleLeftOn("occupant");
+  $("#occupant-modal").classList.add("active");
+}
+
+$("#occupant-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#occupant-id").value;
+  const active = $("#occupant-active").checked;
+  const payload = {
+    unit_id: currentUnitId,
+    first_name: $("#occupant-first").value.trim(),
+    last_name: $("#occupant-last").value.trim(),
+    cell: $("#occupant-cell").value.trim() || null,
+    email: $("#occupant-email").value.trim() || null,
+    occupant_since: $("#occupant-since").value || null,
+    related_owner_id: $("#occupant-owner").value || null,
+    related_tenant_id: $("#occupant-tenant").value || null,
+    relationship: $("#occupant-relationship").value,
+    active,
+    left_on: active ? null : ($("#occupant-left").value || null),
+  };
+  const { error } = id
+    ? await sb.from("occupants").update(payload).eq("id", id)
+    : await sb.from("occupants").insert(payload);
+  if (error) { setMsg("occupant-msg", "⚠️ " + error.message, false); return; }
+  closeOverlays();
+  await loadData();
+  renderUnitDetail(currentUnitId);
+});
+
+/* ----- Pet modal ----- */
+function openPetModal(pet) {
+  $("#pet-modal-title").textContent = pet ? "Edit pet" : "Add pet";
+  $("#pet-id").value = pet?.id || "";
+  $("#pet-name").value = pet?.name || "";
+  $("#pet-type").value = pet?.pet_type || "dog";
+  $("#pet-type-other").value = pet?.type_other || "";
+  $("#pet-breed").value = pet?.breed || "";
+  $("#pet-gender").value = pet?.gender || "unknown";
+  $("#pet-colour").value = pet?.colour || "";
+  $("#pet-sterilised").value = pet?.sterilised == null ? "" : (pet.sterilised ? "yes" : "no");
+  // Holder dropdown: every active person in the unit (owners, tenants, occupants).
+  const holders = [];
+  state.owners.filter((o) => o.unit_id === currentUnitId).forEach((o) =>
+    holders.push({ v: `owner|${o.id}`, label: fullName(o) + " (owner)" }));
+  state.tenants.filter((t) => t.unit_id === currentUnitId).forEach((t) =>
+    holders.push({ v: `tenant|${t.id}`, label: fullName(t) + " (tenant)" }));
+  state.occupants.filter((oc) => oc.unit_id === currentUnitId).forEach((oc) =>
+    holders.push({ v: `occupant|${oc.id}`, label: fullName(oc) + " (occupant)" }));
+  const currentVal = pet ? `${pet.holder_kind}|${pet.holder_id}` : "";
+  $("#pet-holder").innerHTML = `<option value="">— choose —</option>` +
+    holders.map((h) => `<option value="${h.v}" ${h.v === currentVal ? "selected" : ""}>${esc(h.label)}</option>`).join("");
+  $("#pet-msg").textContent = "";
+  togglePetOther();
+  $("#pet-modal").classList.add("active");
+}
+
+$("#pet-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#pet-id").value;
+  const [holderKind, holderId] = ($("#pet-holder").value || "|").split("|");
+  const sterVal = $("#pet-sterilised").value;
+  const payload = {
+    unit_id: currentUnitId,
+    holder_kind: holderKind || "occupant",
+    holder_id: holderId || null,
+    name: $("#pet-name").value.trim(),
+    pet_type: $("#pet-type").value,
+    type_other: $("#pet-type").value === "other" ? ($("#pet-type-other").value.trim() || null) : null,
+    breed: $("#pet-breed").value.trim() || null,
+    gender: $("#pet-gender").value,
+    colour: $("#pet-colour").value.trim() || null,
+    sterilised: sterVal === "" ? null : (sterVal === "yes"),
+  };
+  const { error } = id
+    ? await sb.from("pets").update(payload).eq("id", id)
+    : await sb.from("pets").insert(payload);
+  if (error) { setMsg("pet-msg", "⚠️ " + error.message, false); return; }
+  closeOverlays();
+  await loadData();
+  renderUnitDetail(currentUnitId);
+});
+
+function togglePetOther() {
+  $("#pet-type-other-wrap").hidden = $("#pet-type").value !== "other";
+}
 
 // Show/hide agency fields based on lease type.
 function toggleAgencyFields() {
@@ -810,12 +1006,18 @@ document.addEventListener("click", async (e) => {
   if (t.hasAttribute("data-add-tenant")) openTenantModal(null);
   if (t.dataset.editOwner) openOwnerModal(state.owners.find((o) => o.id === t.dataset.editOwner));
   if (t.dataset.editTenant) openTenantModal(state.tenants.find((tn) => tn.id === t.dataset.editTenant));
+  if (t.hasAttribute("data-add-occupant")) openOccupantModal(null);
+  if (t.dataset.editOccupant) openOccupantModal(state.occupants.find((oc) => oc.id === t.dataset.editOccupant));
+  if (t.hasAttribute("data-add-pet")) openPetModal(null);
+  if (t.dataset.editPet) openPetModal(state.pets.find((p) => p.id === t.dataset.editPet));
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
   if (e.target.id === "tenant-lease") toggleAgencyFields();
   if (e.target.id === "owner-active") toggleLeftOn("owner");
   if (e.target.id === "tenant-active") toggleLeftOn("tenant");
+  if (e.target.id === "occupant-active") toggleLeftOn("occupant");
+  if (e.target.id === "pet-type") togglePetOther();
 });
 $$(".modal-overlay").forEach((ov) =>
   ov.addEventListener("click", (e) => { if (e.target === ov) ov.classList.remove("active"); }));
