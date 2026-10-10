@@ -223,8 +223,48 @@ function isTrustee() { return me.role === "trustee"; }
 function isAssignee() { return me.role === "gardener" || me.role === "service_provider"; }
 function isResident() { return me.role === "owner" || me.role === "tenant"; }
 
+/* ---- Client-side permission helpers (mirror the DB RLS) ----
+   These decide what the UI SHOWS/enables. The database enforces the
+   real rules regardless, so these are for UX, not security. */
+function myUnitIds() {
+  // Units this user can access.
+  const ids = new Set();
+  if (isResident()) {
+    // Owners/tenants: via unit_members or an owner/tenant record (profile_id).
+    state.members.filter((m) => m.profile_id === me.id).forEach((m) => ids.add(m.unit_id));
+    state.owners.filter((o) => o.profile_id === me.id && o.active).forEach((o) => ids.add(o.unit_id));
+    state.tenants.filter((t) => t.profile_id === me.id && t.active).forEach((t) => ids.add(t.unit_id));
+  }
+  if (isAssignee()) {
+    // Gardeners/service providers: units of requests assigned to them.
+    state.requests.filter((r) => r.assignee_id === me.id).forEach((r) => ids.add(r.unit_id));
+  }
+  return ids;
+}
+function amOwnerOf(unitId) {
+  if (me.role !== "owner" && me.role !== "trustee") {
+    // allow owner role check regardless, but typical owners have role 'owner'
+  }
+  return state.owners.some((o) => o.unit_id === unitId && o.profile_id === me.id && o.active)
+      || state.members.some((m) => m.unit_id === unitId && m.profile_id === me.id && m.relation === "owner");
+}
+function amTenantOf(unitId) {
+  return state.tenants.some((t) => t.unit_id === unitId && t.profile_id === me.id && t.active)
+      || state.members.some((m) => m.unit_id === unitId && m.profile_id === me.id && m.relation === "tenant");
+}
+// Edit capabilities per the agreed matrix.
+const canEditOwners   = (unitId) => isTrustee() || amOwnerOf(unitId);
+const canEditTenants  = (unitId) => isTrustee() || amOwnerOf(unitId) || amTenantOf(unitId);
+const canEditOccupants= (unitId) => isTrustee() || amOwnerOf(unitId) || amTenantOf(unitId);
+const canEditPets     = (unitId) => isTrustee() || amOwnerOf(unitId) || amTenantOf(unitId);
+const canSeeOwners    = (unitId) => isTrustee() || amOwnerOf(unitId); // tenants: NO owner data
+const canSeeLinkedUsers = (unitId) => isTrustee() || amOwnerOf(unitId); // owners + trustees only
+const canManagePhotos = (unitId) => isTrustee() || amOwnerOf(unitId);
+// Residents (owner/tenant) see only ACTIVE registry rows; trustees see all.
+const showInactive = () => isTrustee();
+
 function defaultView() {
-  return "dashboard";
+  return isTrustee() ? "dashboard" : (myUnitIds().size ? "myunits" : "dashboard");
 }
 
 function buildTabs() {
@@ -237,6 +277,9 @@ function buildTabs() {
     tabs.push({ id: "pets", label: "Pets" });
     tabs.push({ id: "layouts", label: "Layouts" });
     tabs.push({ id: "users", label: "Users" });
+  } else if (myUnitIds().size) {
+    // Residents, gardeners, service providers see their linked unit(s).
+    tabs.push({ id: "myunits", label: myUnitIds().size > 1 ? "My units" : "My unit" });
   }
   const el = $("#tabs");
   el.hidden = false;
@@ -297,6 +340,7 @@ function showView(name) {
     dashboard: renderDashboard,
     requests: renderRequests,
     units: renderUnits,
+    myunits: renderMyUnits,
     owners: renderOwnersList,
     tenants: renderTenantsList,
     occupants: renderOccupantsList,
@@ -386,6 +430,25 @@ function renderUnits() {
   $("#add-unit-btn").addEventListener("click", () => openUnitModal(null));
 }
 
+function renderMyUnits() {
+  const ids = myUnitIds();
+  const mine = state.units.filter((u) => ids.has(u.id));
+  if (mine.length === 1) return renderUnitDetail(mine[0].id); // jump straight in
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🏠 My units</h2></div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Unit</th><th>Layout</th><th></th>
+      </tr></thead><tbody>
+        ${mine.map((u) => `<tr>
+          <td><strong>${esc(u.number)}</strong></td>
+          <td>${esc(layoutLabel(u.layout_id))}</td>
+          <td style="text-align:right"><button class="btn ghost small" data-open-unit="${u.id}">Open</button></td>
+        </tr>`).join("") || `<tr><td colspan="3" class="empty">No units linked to you yet.</td></tr>`}
+      </tbody></table></div>
+    </div>`;
+}
+
 function openUnitModal(unit) {
   $("#unit-modal-title").textContent = unit ? "Edit unit" : "Add unit";
   $("#unit-id").value = unit?.id || "";
@@ -435,18 +498,23 @@ function unitUsersTable(unitId) {
 function renderUnitDetail(unitId) {
   currentUnitId = unitId;
   const u = state.units.find((x) => x.id === unitId);
-  if (!u) return renderUnits();
+  if (!u) return isTrustee() ? renderUnits() : renderMyUnits();
 
-  const owners = state.owners.filter((o) => o.unit_id === unitId);
-  const tenants = state.tenants.filter((t) => t.unit_id === unitId);
+  // Residents see only ACTIVE rows; trustees see everything.
+  const activeOnly = (arr) => showInactive() ? arr : arr.filter((x) => x.active);
+  const owners = activeOnly(state.owners.filter((o) => o.unit_id === unitId));
+  const tenants = activeOnly(state.tenants.filter((t) => t.unit_id === unitId));
   const layout = layoutById(u.layout_id);
 
+  const assigneeOnly = isAssignee(); // gardener / service provider: basics + photos only
+  const backView = isTrustee() ? "units" : "myunits";
+
   $("#main").innerHTML = `
-    <button class="link-btn" data-back-units>← Back to units</button>
+    <button class="link-btn" data-back-view="${backView}">← Back</button>
     <div class="panel">
       <div class="panel-head">
         <h2>🏠 Unit ${esc(u.number)}</h2>
-        <button class="btn ghost small" data-edit-unit="${u.id}">Edit unit</button>
+        ${isTrustee() ? `<button class="btn ghost small" data-edit-unit="${u.id}">Edit unit</button>` : ""}
       </div>
       <dl class="detail-grid">
         <dt>Layout</dt><dd>${layout ? esc(layout.code) + (layout.description ? " — " + esc(layout.description) : "") : "—"}</dd>
@@ -456,7 +524,7 @@ function renderUnitDetail(unitId) {
 
     <div class="panel">
       <div class="panel-head"><h2>📷 Photos</h2>
-        ${canManageUnitPhotos(unitId)
+        ${canManagePhotos(unitId)
           ? `<label class="btn primary small upload-label">+ Add photo
                <input type="file" accept="image/*" id="unit-photo-input" hidden /></label>`
           : ""}
@@ -466,47 +534,48 @@ function renderUnitDetail(unitId) {
       ${unitPhotoGallery(unitId)}
     </div>
 
+    ${assigneeOnly ? "" : `
+    ${canSeeOwners(unitId) ? `
     <div class="panel">
       <div class="panel-head"><h2>👤 Owners</h2>
-        <button class="btn primary small" data-add-owner>+ Add owner</button></div>
-      ${personTable(owners, "owner")}
-    </div>
+        ${canEditOwners(unitId) ? `<button class="btn primary small" data-add-owner>+ Add owner</button>` : ""}</div>
+      ${personTable(owners, "owner", canEditOwners(unitId))}
+    </div>` : ""}
 
     <div class="panel">
       <div class="panel-head"><h2>🔑 Tenants</h2>
-        <button class="btn primary small" data-add-tenant>+ Add tenant</button></div>
-      ${personTable(tenants, "tenant")}
+        ${canEditTenants(unitId) ? `<button class="btn primary small" data-add-tenant>+ Add tenant</button>` : ""}</div>
+      ${personTable(tenants, "tenant", canEditTenants(unitId))}
     </div>
 
     <div class="panel">
       <div class="panel-head"><h2>🧑‍🤝‍🧑 Occupants</h2>
-        <button class="btn primary small" data-add-occupant>+ Add occupant</button></div>
-      <p class="muted tiny">Owners &amp; tenants marked “is occupant” appear here automatically. Add other household members (spouse, child, live-in employee) below.</p>
+        ${canEditOccupants(unitId) ? `<button class="btn primary small" data-add-occupant>+ Add occupant</button>` : ""}</div>
+      <p class="muted tiny">Owners &amp; tenants marked “is occupant” appear here automatically. Add other household members below.</p>
       ${occupantTable(unitId)}
     </div>
 
     <div class="panel">
       <div class="panel-head"><h2>🐾 Pets</h2>
-        <button class="btn primary small" data-add-pet>+ Add pet</button></div>
+        ${canEditPets(unitId) ? `<button class="btn primary small" data-add-pet>+ Add pet</button>` : ""}</div>
       ${petTable(unitId)}
     </div>
 
+    ${canSeeLinkedUsers(unitId) ? `
     <div class="panel">
       <div class="panel-head"><h2>🔐 Linked users</h2>
-        <span class="hint">Login accounts linked to this unit (manage on the Users tab)</span></div>
+        <span class="hint">Login accounts linked to this unit${isTrustee() ? " (manage on the Users tab)" : ""}</span></div>
       ${unitUsersTable(unitId)}
-    </div>`;
+    </div>` : ""}
+    `}`;
 
   // Wire the hidden file input (added fresh each render).
   const input = $("#unit-photo-input");
   if (input) input.addEventListener("change", (e) => onUnitPhotoChosen(e, unitId));
 }
 
-// Trustees always; owners of this unit too.
-function canManageUnitPhotos(unitId) {
-  if (isTrustee()) return true;
-  return state.owners.some((o) => o.unit_id === unitId && o.profile_id === me.id && o.active);
-}
+// Trustees always; owners of this unit too. (Delegates to canManagePhotos.)
+function canManageUnitPhotos(unitId) { return canManagePhotos(unitId); }
 
 function unitPhotoGallery(unitId) {
   const photos = state.unitPhotos.filter((p) => p.unit_id === unitId);
@@ -571,20 +640,22 @@ function occupantsFor(unitId) {
 }
 
 function occupantTable(unitId) {
-  const list = occupantsFor(unitId);
+  let list = occupantsFor(unitId);
+  if (!showInactive()) list = list.filter((p) => p.active); // residents: active only
   if (!list.length) return `<div class="empty">No occupants yet.</div>`;
+  const canEdit = canEditOccupants(unitId);
   const sorted = list.slice().sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name));
   return `<div class="table-wrap"><table><thead><tr>
-      <th>Name</th><th>Role / relationship</th><th>Source</th><th>Status</th><th></th>
+      <th>Name</th><th>Role / relationship</th><th>Source</th><th>Status</th>${canEdit ? "<th></th>" : ""}
     </tr></thead><tbody>
     ${sorted.map((p) => `<tr class="${p.active ? "" : "inactive-row"}">
       <td><strong>${esc(p.name)}</strong></td>
       <td>${esc(p.detail)}</td>
       <td>${p.auto ? '<span class="muted tiny">auto (from ' + p.kind + ')</span>' : '<span class="chip">added</span>'}</td>
       <td>${p.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Inactive</span>'}</td>
-      <td style="text-align:right">${p.auto
+      ${canEdit ? `<td style="text-align:right">${p.auto
         ? '<span class="muted tiny">edit on their ' + p.kind + ' record</span>'
-        : `<button class="btn ghost small" data-edit-occupant="${p.id}">Edit</button>`}</td>
+        : `<button class="btn ghost small" data-edit-occupant="${p.id}">Edit</button>`}</td>` : ""}
     </tr>`).join("")}
   </tbody></table></div>`;
 }
@@ -592,8 +663,9 @@ function occupantTable(unitId) {
 function petTable(unitId) {
   const pets = state.pets.filter((p) => p.unit_id === unitId);
   if (!pets.length) return `<div class="empty">No pets recorded.</div>`;
+  const canEdit = canEditPets(unitId);
   return `<div class="table-wrap"><table><thead><tr>
-      <th>Name</th><th>Type</th><th>Breed</th><th>Belongs to</th><th>Sterilised</th><th></th>
+      <th>Name</th><th>Type</th><th>Breed</th><th>Belongs to</th><th>Sterilised</th>${canEdit ? "<th></th>" : ""}
     </tr></thead><tbody>
     ${pets.map((p) => `<tr>
       <td><strong>${esc(p.name)}</strong></td>
@@ -601,7 +673,7 @@ function petTable(unitId) {
       <td>${esc(p.breed || "—")}</td>
       <td>${esc(holderName(p))}</td>
       <td>${p.sterilised == null ? "—" : (p.sterilised ? "Yes" : "No")}</td>
-      <td style="text-align:right"><button class="btn ghost small" data-edit-pet="${p.id}">Edit</button></td>
+      ${canEdit ? `<td style="text-align:right"><button class="btn ghost small" data-edit-pet="${p.id}">Edit</button></td>` : ""}
     </tr>`).join("")}
   </tbody></table></div>`;
 }
@@ -614,14 +686,14 @@ function holderName(pet) {
 }
 function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
-function personTable(people, kind) {
+function personTable(people, kind, canEdit = true) {
   if (!people.length) return `<div class="empty">No ${kind}s recorded.</div>`;
   // Active first, then by name.
   const sorted = people.slice().sort((a, b) => (b.active - a.active) || fullName(a).localeCompare(fullName(b)));
   return `<div class="table-wrap"><table><thead><tr>
       <th>Name</th><th>Contact</th><th>Since</th>
       ${kind === "tenant" ? "<th>Lease</th>" : ""}
-      <th>Occupant</th><th>Status</th><th></th>
+      <th>Occupant</th><th>Status</th>${canEdit ? "<th></th>" : ""}
     </tr></thead><tbody>
     ${sorted.map((p) => `<tr class="${p.active ? "" : "inactive-row"}">
       <td><strong>${esc(fullName(p))}</strong></td>
@@ -630,7 +702,7 @@ function personTable(people, kind) {
       ${kind === "tenant" ? `<td>${p.lease_with === "agency" ? "Agency: " + esc(p.agency_name || "—") : "Direct with owner"}</td>` : ""}
       <td>${p.is_occupant ? "Yes" : "No"}</td>
       <td>${p.active ? '<span class="pill approved">Active</span>' : `<span class="pill rejected">Left ${fmtDay(p.left_on)}</span>`}</td>
-      <td style="text-align:right"><button class="btn ghost small" data-edit-${kind}="${p.id}">Edit</button></td>
+      ${canEdit ? `<td style="text-align:right"><button class="btn ghost small" data-edit-${kind}="${p.id}">Edit</button></td>` : ""}
     </tr>`).join("")}
   </tbody></table></div>`;
 }
@@ -739,11 +811,14 @@ function openOccupantModal(occupant) {
   $("#occupant-relationship").value = occupant?.relationship || "other";
   $("#occupant-active").checked = occupant ? !!occupant.active : true;
   $("#occupant-left").value = occupant?.left_on || "";
-  // Related owner / tenant dropdowns, scoped to the current unit.
-  const owners = state.owners.filter((o) => o.unit_id === currentUnitId);
-  const tenants = state.tenants.filter((t) => t.unit_id === currentUnitId);
+  // Related owner / tenant dropdowns, scoped to the current unit (active).
+  // Tenants cannot see owners, so hide the "related to owner" field for them.
+  const owners = state.owners.filter((o) => o.unit_id === currentUnitId && o.active);
+  const tenants = state.tenants.filter((t) => t.unit_id === currentUnitId && t.active);
+  const seeOwners = canSeeOwners(currentUnitId);
+  $("#occupant-owner-wrap").hidden = !seeOwners;
   $("#occupant-owner").innerHTML = `<option value="">— none —</option>` +
-    owners.map((o) => `<option value="${o.id}" ${occupant?.related_owner_id === o.id ? "selected" : ""}>${esc(fullName(o))}</option>`).join("");
+    (seeOwners ? owners.map((o) => `<option value="${o.id}" ${occupant?.related_owner_id === o.id ? "selected" : ""}>${esc(fullName(o))}</option>`).join("") : "");
   $("#occupant-tenant").innerHTML = `<option value="">— none —</option>` +
     tenants.map((t) => `<option value="${t.id}" ${occupant?.related_tenant_id === t.id ? "selected" : ""}>${esc(fullName(t))}</option>`).join("");
   $("#occupant-msg").textContent = "";
@@ -788,13 +863,18 @@ function openPetModal(pet) {
   $("#pet-gender").value = pet?.gender || "unknown";
   $("#pet-colour").value = pet?.colour || "";
   $("#pet-sterilised").value = pet?.sterilised == null ? "" : (pet.sterilised ? "yes" : "no");
-  // Holder dropdown: every active person in the unit (owners, tenants, occupants).
+  // Holder dropdown = OCCUPANTS of the unit: real occupant records PLUS
+  // owners/tenants flagged is_occupant (active). Tenants never see owners,
+  // so owner-occupants won't appear in a tenant's dropdown.
   const holders = [];
-  state.owners.filter((o) => o.unit_id === currentUnitId).forEach((o) =>
-    holders.push({ v: `owner|${o.id}`, label: fullName(o) + " (owner)" }));
-  state.tenants.filter((t) => t.unit_id === currentUnitId).forEach((t) =>
+  const seeOwners = canSeeOwners(currentUnitId); // tenants: false
+  if (seeOwners) {
+    state.owners.filter((o) => o.unit_id === currentUnitId && o.active && o.is_occupant).forEach((o) =>
+      holders.push({ v: `owner|${o.id}`, label: fullName(o) + " (owner)" }));
+  }
+  state.tenants.filter((t) => t.unit_id === currentUnitId && t.active && t.is_occupant).forEach((t) =>
     holders.push({ v: `tenant|${t.id}`, label: fullName(t) + " (tenant)" }));
-  state.occupants.filter((oc) => oc.unit_id === currentUnitId).forEach((oc) =>
+  state.occupants.filter((oc) => oc.unit_id === currentUnitId && oc.active).forEach((oc) =>
     holders.push({ v: `occupant|${oc.id}`, label: fullName(oc) + " (occupant)" }));
   const currentVal = pet ? `${pet.holder_kind}|${pet.holder_id}` : "";
   $("#pet-holder").innerHTML = `<option value="">— choose —</option>` +
@@ -1280,7 +1360,7 @@ document.addEventListener("click", async (e) => {
 
   // Unit detail (owners & tenants)
   if (t.dataset.openUnit) renderUnitDetail(t.dataset.openUnit);
-  if (t.hasAttribute("data-back-units")) showView("units");
+  if (t.dataset.backView) showView(t.dataset.backView);
   if (t.hasAttribute("data-add-owner")) openOwnerModal(null);
   if (t.hasAttribute("data-add-tenant")) openTenantModal(null);
   if (t.dataset.editOwner) openOwnerModal(state.owners.find((o) => o.id === t.dataset.editOwner));
