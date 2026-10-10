@@ -29,6 +29,9 @@ in the SQL Editor the same way:
 
 - **`04_phase1_layouts.sql`** — Unit Layouts + a layout link on Units.
   (Includes 5 starter layouts; edit or remove them in the app.)
+- **`05_phase2_owners_tenants.sql`** — Owners & Tenants registry tables
+  (many per unit; full contact fields, "since" dates, is-occupant,
+  active/left-on history, and tenant lease-with owner/agency).
 
 If each run says *Success. No rows returned*, you're good.
 
