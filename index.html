@@ -175,6 +175,73 @@
     </div>
   </div>
 
+  <!-- Owner modal -->
+  <div class="modal-overlay" id="owner-modal">
+    <div class="modal">
+      <h3 id="owner-modal-title">Add owner</h3>
+      <form id="owner-form">
+        <input type="hidden" id="owner-id" />
+        <div class="row">
+          <label>First name <input id="owner-first" required /></label>
+          <label>Last name <input id="owner-last" required /></label>
+        </div>
+        <div class="row">
+          <label>Cell number <input id="owner-cell" placeholder="+27 ..." /></label>
+          <label>Email <input id="owner-email" type="email" /></label>
+        </div>
+        <label>Owner since <input id="owner-since" type="date" /></label>
+        <label class="check"><input id="owner-occupant" type="checkbox" /> Is also an occupant</label>
+        <label class="check"><input id="owner-active" type="checkbox" checked /> Active</label>
+        <label id="owner-left-wrap" hidden>Left on <input id="owner-left" type="date" /></label>
+        <p id="owner-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save owner</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Tenant modal -->
+  <div class="modal-overlay" id="tenant-modal">
+    <div class="modal">
+      <h3 id="tenant-modal-title">Add tenant</h3>
+      <form id="tenant-form">
+        <input type="hidden" id="tenant-id" />
+        <div class="row">
+          <label>First name <input id="tenant-first" required /></label>
+          <label>Last name <input id="tenant-last" required /></label>
+        </div>
+        <div class="row">
+          <label>Cell number <input id="tenant-cell" placeholder="+27 ..." /></label>
+          <label>Email <input id="tenant-email" type="email" /></label>
+        </div>
+        <label>Tenant since <input id="tenant-since" type="date" /></label>
+        <label class="check"><input id="tenant-occupant" type="checkbox" checked /> Is also an occupant</label>
+        <label>Lease agreement
+          <select id="tenant-lease">
+            <option value="owner">Direct with owner</option>
+            <option value="agency">Via rental agency</option>
+          </select>
+        </label>
+        <div id="agency-fields" hidden>
+          <label>Agency name <input id="tenant-agency-name" /></label>
+          <div class="row">
+            <label>Agency cell <input id="tenant-agency-cell" /></label>
+            <label>Agency email <input id="tenant-agency-email" type="email" /></label>
+          </div>
+        </div>
+        <label class="check"><input id="tenant-active" type="checkbox" checked /> Active</label>
+        <label id="tenant-left-wrap" hidden>Left on <input id="tenant-left" type="date" /></label>
+        <p id="tenant-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save tenant</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Link person to unit modal (replaces the old browser prompt boxes) -->
   <div class="modal-overlay" id="link-modal">
     <div class="modal">

@@ -31,7 +31,7 @@ const STATUS_ORDER = ["open", "in_progress", "waiting_on_resident", "resolved"];
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [] };
 let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
@@ -236,16 +236,20 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, requests, profiles, layouts] = await Promise.all([
+  const [units, requests, profiles, layouts, owners, tenants] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("requests").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
     sb.from("unit_layouts").select("*").order("code"),
+    sb.from("owners").select("*").order("last_name"),
+    sb.from("tenants").select("*").order("last_name"),
   ]);
   state.units = units.data || [];
   state.requests = requests.data || [];
   state.profiles = profiles.data || [];
   state.layouts = layouts.data || [];
+  state.owners = owners.data || [];
+  state.tenants = tenants.data || [];
 }
 
 /* ---------- Views ---------- */
@@ -321,15 +325,20 @@ function renderUnits() {
       <div class="panel-head"><h2>🏠 Units</h2>
         <button class="btn primary" id="add-unit-btn">+ Add unit</button></div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Unit</th><th>Layout</th><th>Notes</th><th>Open requests</th><th></th>
+        <th>Unit</th><th>Layout</th><th>People</th><th>Open requests</th><th></th>
       </tr></thead><tbody>
         ${state.units.map((u) => {
           const open = state.requests.filter((r) => r.unit_id === u.id && r.status !== "resolved").length;
-          return `<tr><td><strong>${esc(u.number)}</strong></td>
+          const owners = state.owners.filter((o) => o.unit_id === u.id && o.active).length;
+          const tenants = state.tenants.filter((tn) => tn.unit_id === u.id && tn.active).length;
+          return `<tr>
+            <td><strong>${esc(u.number)}</strong></td>
             <td>${esc(layoutLabel(u.layout_id))}</td>
-            <td>${esc(u.notes || "—")}</td>
+            <td>${owners} owner${owners === 1 ? "" : "s"}, ${tenants} tenant${tenants === 1 ? "" : "s"}</td>
             <td><span class="badge-count ${open ? "" : "zero"}">${open}</span></td>
-            <td style="text-align:right"><button class="btn ghost small" data-edit-unit="${u.id}">Edit</button></td></tr>`;
+            <td style="text-align:right">
+              <button class="btn ghost small" data-open-unit="${u.id}">Open</button>
+              <button class="btn ghost small" data-edit-unit="${u.id}">Edit</button></td></tr>`;
         }).join("") || `<tr><td colspan="5" class="empty">No units yet.</td></tr>`}
       </tbody></table></div>
     </div>`;
@@ -348,6 +357,176 @@ function openUnitModal(unit) {
       `<option value="${l.id}" ${unit?.layout_id === l.id ? "selected" : ""}>${esc(l.code)}${l.description ? " — " + esc(l.description) : ""}</option>`
     ).join("");
   $("#unit-modal").classList.add("active");
+}
+
+/* ---------- Unit detail (drill-in): owners & tenants ---------- */
+let currentUnitId = null;
+
+function fullName(p) { return `${p.first_name || ""} ${p.last_name || ""}`.trim() || "—"; }
+function fmtDay(d) { return d ? new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"; }
+function contactLine(p) {
+  const bits = [];
+  if (p.cell) bits.push(`<a href="tel:${esc(p.cell)}">${esc(p.cell)}</a>`);
+  if (p.email) bits.push(`<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>`);
+  return bits.join(" · ") || '<span class="muted">no contact</span>';
+}
+
+function renderUnitDetail(unitId) {
+  currentUnitId = unitId;
+  const u = state.units.find((x) => x.id === unitId);
+  if (!u) return renderUnits();
+
+  const owners = state.owners.filter((o) => o.unit_id === unitId);
+  const tenants = state.tenants.filter((t) => t.unit_id === unitId);
+  const layout = layoutById(u.layout_id);
+
+  $("#main").innerHTML = `
+    <button class="link-btn" data-back-units>← Back to units</button>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>🏠 Unit ${esc(u.number)}</h2>
+        <button class="btn ghost small" data-edit-unit="${u.id}">Edit unit</button>
+      </div>
+      <dl class="detail-grid">
+        <dt>Layout</dt><dd>${layout ? esc(layout.code) + (layout.description ? " — " + esc(layout.description) : "") : "—"}</dd>
+        <dt>Notes</dt><dd>${esc(u.notes || "—")}</dd>
+      </dl>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>👤 Owners</h2>
+        <button class="btn primary small" data-add-owner>+ Add owner</button></div>
+      ${personTable(owners, "owner")}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>🔑 Tenants</h2>
+        <button class="btn primary small" data-add-tenant>+ Add tenant</button></div>
+      ${personTable(tenants, "tenant")}
+    </div>`;
+}
+
+function personTable(people, kind) {
+  if (!people.length) return `<div class="empty">No ${kind}s recorded.</div>`;
+  // Active first, then by name.
+  const sorted = people.slice().sort((a, b) => (b.active - a.active) || fullName(a).localeCompare(fullName(b)));
+  return `<div class="table-wrap"><table><thead><tr>
+      <th>Name</th><th>Contact</th><th>Since</th>
+      ${kind === "tenant" ? "<th>Lease</th>" : ""}
+      <th>Occupant</th><th>Status</th><th></th>
+    </tr></thead><tbody>
+    ${sorted.map((p) => `<tr class="${p.active ? "" : "inactive-row"}">
+      <td><strong>${esc(fullName(p))}</strong></td>
+      <td>${contactLine(p)}</td>
+      <td>${fmtDay(kind === "tenant" ? p.tenant_since : p.owner_since)}</td>
+      ${kind === "tenant" ? `<td>${p.lease_with === "agency" ? "Agency: " + esc(p.agency_name || "—") : "Direct with owner"}</td>` : ""}
+      <td>${p.is_occupant ? "Yes" : "No"}</td>
+      <td>${p.active ? '<span class="pill approved">Active</span>' : `<span class="pill rejected">Left ${fmtDay(p.left_on)}</span>`}</td>
+      <td style="text-align:right"><button class="btn ghost small" data-edit-${kind}="${p.id}">Edit</button></td>
+    </tr>`).join("")}
+  </tbody></table></div>`;
+}
+
+/* ----- Owner modal ----- */
+function openOwnerModal(owner) {
+  $("#owner-modal-title").textContent = owner ? "Edit owner" : "Add owner";
+  $("#owner-id").value = owner?.id || "";
+  $("#owner-first").value = owner?.first_name || "";
+  $("#owner-last").value = owner?.last_name || "";
+  $("#owner-cell").value = owner?.cell || "";
+  $("#owner-email").value = owner?.email || "";
+  $("#owner-since").value = owner?.owner_since || "";
+  $("#owner-occupant").checked = !!owner?.is_occupant;
+  $("#owner-active").checked = owner ? !!owner.active : true;
+  $("#owner-left").value = owner?.left_on || "";
+  $("#owner-msg").textContent = "";
+  toggleLeftOn("owner");
+  $("#owner-modal").classList.add("active");
+}
+
+$("#owner-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#owner-id").value;
+  const active = $("#owner-active").checked;
+  const payload = {
+    unit_id: currentUnitId,
+    first_name: $("#owner-first").value.trim(),
+    last_name: $("#owner-last").value.trim(),
+    cell: $("#owner-cell").value.trim() || null,
+    email: $("#owner-email").value.trim() || null,
+    owner_since: $("#owner-since").value || null,
+    is_occupant: $("#owner-occupant").checked,
+    active,
+    left_on: active ? null : ($("#owner-left").value || null),
+  };
+  const { error } = id
+    ? await sb.from("owners").update(payload).eq("id", id)
+    : await sb.from("owners").insert(payload);
+  if (error) { setMsg("owner-msg", "⚠️ " + error.message, false); return; }
+  closeOverlays();
+  await loadData();
+  renderUnitDetail(currentUnitId);
+});
+
+/* ----- Tenant modal ----- */
+function openTenantModal(tenant) {
+  $("#tenant-modal-title").textContent = tenant ? "Edit tenant" : "Add tenant";
+  $("#tenant-id").value = tenant?.id || "";
+  $("#tenant-first").value = tenant?.first_name || "";
+  $("#tenant-last").value = tenant?.last_name || "";
+  $("#tenant-cell").value = tenant?.cell || "";
+  $("#tenant-email").value = tenant?.email || "";
+  $("#tenant-since").value = tenant?.tenant_since || "";
+  $("#tenant-occupant").checked = tenant ? !!tenant.is_occupant : true;
+  $("#tenant-lease").value = tenant?.lease_with || "owner";
+  $("#tenant-agency-name").value = tenant?.agency_name || "";
+  $("#tenant-agency-cell").value = tenant?.agency_cell || "";
+  $("#tenant-agency-email").value = tenant?.agency_email || "";
+  $("#tenant-active").checked = tenant ? !!tenant.active : true;
+  $("#tenant-left").value = tenant?.left_on || "";
+  $("#tenant-msg").textContent = "";
+  toggleAgencyFields();
+  toggleLeftOn("tenant");
+  $("#tenant-modal").classList.add("active");
+}
+
+$("#tenant-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#tenant-id").value;
+  const active = $("#tenant-active").checked;
+  const viaAgency = $("#tenant-lease").value === "agency";
+  const payload = {
+    unit_id: currentUnitId,
+    first_name: $("#tenant-first").value.trim(),
+    last_name: $("#tenant-last").value.trim(),
+    cell: $("#tenant-cell").value.trim() || null,
+    email: $("#tenant-email").value.trim() || null,
+    tenant_since: $("#tenant-since").value || null,
+    is_occupant: $("#tenant-occupant").checked,
+    lease_with: viaAgency ? "agency" : "owner",
+    agency_name: viaAgency ? ($("#tenant-agency-name").value.trim() || null) : null,
+    agency_cell: viaAgency ? ($("#tenant-agency-cell").value.trim() || null) : null,
+    agency_email: viaAgency ? ($("#tenant-agency-email").value.trim() || null) : null,
+    active,
+    left_on: active ? null : ($("#tenant-left").value || null),
+  };
+  const { error } = id
+    ? await sb.from("tenants").update(payload).eq("id", id)
+    : await sb.from("tenants").insert(payload);
+  if (error) { setMsg("tenant-msg", "⚠️ " + error.message, false); return; }
+  closeOverlays();
+  await loadData();
+  renderUnitDetail(currentUnitId);
+});
+
+// Show/hide agency fields based on lease type.
+function toggleAgencyFields() {
+  const show = $("#tenant-lease").value === "agency";
+  $("#agency-fields").hidden = !show;
+}
+// Show/hide "left on" date based on active checkbox.
+function toggleLeftOn(kind) {
+  $(`#${kind}-left-wrap`).hidden = $(`#${kind}-active`).checked;
 }
 
 function renderLayouts() {
@@ -623,9 +802,20 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.linkUnit) openLinkModal(t.dataset.linkUnit);
   if (t.dataset.editUnit) openUnitModal(state.units.find((u) => u.id === t.dataset.editUnit));
   if (t.dataset.editLayout) openLayoutModal(state.layouts.find((l) => l.id === t.dataset.editLayout));
+
+  // Unit detail (owners & tenants)
+  if (t.dataset.openUnit) renderUnitDetail(t.dataset.openUnit);
+  if (t.hasAttribute("data-back-units")) showView("units");
+  if (t.hasAttribute("data-add-owner")) openOwnerModal(null);
+  if (t.hasAttribute("data-add-tenant")) openTenantModal(null);
+  if (t.dataset.editOwner) openOwnerModal(state.owners.find((o) => o.id === t.dataset.editOwner));
+  if (t.dataset.editTenant) openTenantModal(state.tenants.find((tn) => tn.id === t.dataset.editTenant));
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
+  if (e.target.id === "tenant-lease") toggleAgencyFields();
+  if (e.target.id === "owner-active") toggleLeftOn("owner");
+  if (e.target.id === "tenant-active") toggleLeftOn("tenant");
 });
 $$(".modal-overlay").forEach((ov) =>
   ov.addEventListener("click", (e) => { if (e.target === ov) ov.classList.remove("active"); }));

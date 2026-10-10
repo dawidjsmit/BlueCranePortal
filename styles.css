@@ -274,3 +274,12 @@ tbody tr:hover { background: #f9fafb; }
   display: inline-block; background: #eff6ff; color: var(--brand-dark);
   border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 600;
 }
+
+/* ===== Phase 2: Owners & Tenants ===== */
+.modal label.check {
+  display: flex; align-items: center; gap: 8px; color: var(--ink);
+  font-size: 14px; margin-bottom: 12px;
+}
+.modal label.check input { width: auto; margin: 0; }
+.inactive-row { opacity: .55; }
+.inactive-row td strong { font-weight: 500; }
