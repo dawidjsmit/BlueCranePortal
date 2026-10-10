@@ -40,7 +40,9 @@ body {
   gap: 12px;
 }
 .brand { display: flex; align-items: center; gap: 12px; }
-.logo { font-size: 32px; }
+.logo { font-size: 32px; } /* used by emoji on pending screen */
+img.logo { width: 40px; height: 40px; display: block; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,.18); }
+img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
 .app-header h1 { margin: 0; font-size: 20px; }
 .subtitle { margin: 0; font-size: 13px; opacity: .85; }
 .tabs { display: flex; gap: 6px; }

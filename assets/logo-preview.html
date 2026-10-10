@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Blue Crane Vistas — Logo preview</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f6fb; color: #1f2937; }
+  h1 { text-align: center; padding: 24px; margin: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; padding: 20px; }
+  .swatch { text-align: center; }
+  .swatch p { font-size: 13px; color: #6b7280; margin: 8px 0 0; }
+  .onlight { background:#fff; padding:20px; border-radius:16px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
+  .ondark  { background:#0f172a; padding:20px; border-radius:16px; }
+  .onbrand { background:linear-gradient(135deg,#2563eb,#1d4ed8); padding:20px; border-radius:16px; }
+  .lockup { display:flex; align-items:center; gap:14px; background:#fff; padding:18px 24px;
+            border-radius:16px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
+  .lockup .t1 { font-size:22px; font-weight:700; }
+  .lockup .t2 { font-size:13px; color:#6b7280; }
+</style>
+</head>
+<body>
+  <h1>Blue Crane Vistas Portal — logo</h1>
+
+  <div class="row">
+    <div class="swatch"><div class="onlight"><img src="logo.svg" width="160" /></div><p>160px on white</p></div>
+    <div class="swatch"><div class="onbrand"><img src="logo.svg" width="160" /></div><p>on brand blue</p></div>
+    <div class="swatch"><div class="ondark"><img src="logo.svg" width="160" /></div><p>on dark</p></div>
+  </div>
+
+  <div class="row">
+    <div class="swatch"><img src="logo.svg" width="96" /><p>96px</p></div>
+    <div class="swatch"><img src="logo.svg" width="48" /><p>48px (header)</p></div>
+    <div class="swatch"><img src="logo.svg" width="24" /><p>24px (favicon)</p></div>
+  </div>
+
+  <div class="row">
+    <div class="lockup">
+      <img src="logo.svg" width="52" />
+      <div>
+        <div class="t1">Blue Crane Vistas</div>
+        <div class="t2">Resident &amp; trustee portal</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
