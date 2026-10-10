@@ -1,6 +1,9 @@
-# 🏢 Complex Comms — Unit Communication Tracker
+<img src="assets/logo.svg" width="80" align="right" alt="Blue Crane Vistas Portal logo" />
 
-> Application to assist communications in Sectional Title Complexes.
+# Blue Crane Vistas Portal
+
+> Resident &amp; trustee portal for the Blue Crane Vistas complex.
+> (Application to assist communications in Sectional Title Complexes.)
 
 A simple, self-contained web app for a **body-corporate / complex trustee** to
 replace a pile of per-unit WhatsApp chats with one centralized, trackable place.
