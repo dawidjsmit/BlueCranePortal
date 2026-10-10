@@ -17,6 +17,11 @@
 -- finish FIRST. PostgreSQL does not allow using a newly-added enum value in
 -- the same transaction that adds it, so it has to be its own step.
 
+-- ---------- Occupants get a login link (like owners/tenants) ----------
+-- Needed so an 'occupant' user can be linked to their unit (Q4).
+alter table occupants
+  add column if not exists profile_id uuid references profiles(id) on delete set null;
+
 -- ---------- Ticket status ----------
 do $$ begin
   create type ticket_status as enum
