@@ -242,6 +242,90 @@
     </div>
   </div>
 
+  <!-- Occupant modal -->
+  <div class="modal-overlay" id="occupant-modal">
+    <div class="modal">
+      <h3 id="occupant-modal-title">Add occupant</h3>
+      <form id="occupant-form">
+        <input type="hidden" id="occupant-id" />
+        <div class="row">
+          <label>First name <input id="occupant-first" required /></label>
+          <label>Last name <input id="occupant-last" required /></label>
+        </div>
+        <div class="row">
+          <label>Cell number <input id="occupant-cell" placeholder="+27 ..." /></label>
+          <label>Email <input id="occupant-email" type="email" /></label>
+        </div>
+        <label>Occupant since <input id="occupant-since" type="date" /></label>
+        <label>Relationship
+          <select id="occupant-relationship">
+            <option value="spouse">Spouse</option>
+            <option value="child">Child</option>
+            <option value="live_in_employee">Live-in employee</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <div class="row">
+          <label>Related to owner <select id="occupant-owner"></select></label>
+          <label>Related to tenant <select id="occupant-tenant"></select></label>
+        </div>
+        <label class="check"><input id="occupant-active" type="checkbox" checked /> Active</label>
+        <label id="occupant-left-wrap" hidden>Left on <input id="occupant-left" type="date" /></label>
+        <p id="occupant-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save occupant</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Pet modal -->
+  <div class="modal-overlay" id="pet-modal">
+    <div class="modal">
+      <h3 id="pet-modal-title">Add pet</h3>
+      <form id="pet-form">
+        <input type="hidden" id="pet-id" />
+        <label>Pet name <input id="pet-name" required /></label>
+        <label>Belongs to <select id="pet-holder" required></select></label>
+        <div class="row">
+          <label>Type
+            <select id="pet-type">
+              <option value="dog">Dog</option>
+              <option value="cat">Cat</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label id="pet-type-other-wrap" hidden>If other, what? <input id="pet-type-other" /></label>
+        </div>
+        <div class="row">
+          <label>Breed <input id="pet-breed" /></label>
+          <label>Gender
+            <select id="pet-gender">
+              <option value="unknown">Unknown</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </label>
+        </div>
+        <label>Colour description <input id="pet-colour" /></label>
+        <label>Sterilised
+          <select id="pet-sterilised">
+            <option value="">Unknown</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </label>
+        <p class="muted tiny">A pet photo can be uploaded in a later phase.</p>
+        <p id="pet-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save pet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Link person to unit modal (replaces the old browser prompt boxes) -->
   <div class="modal-overlay" id="link-modal">
     <div class="modal">
