@@ -1,5 +1,5 @@
 /* ============================================================
-   Complex Comms — multi-user frontend (Supabase)
+   Blue Crane Vistas Portal — multi-user frontend (Supabase)
    ------------------------------------------------------------
    - Magic-link (passwordless) login
    - Role-aware views: trustee / owner / tenant / gardener / service_provider
@@ -11,7 +11,7 @@
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
-const cfg = window.COMPLEX_COMMS_CONFIG || {};
+const cfg = window.BLUE_CRANE_CONFIG || {};
 const CONFIGURED = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY);
 
 const ROLE_LABEL = {

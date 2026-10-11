@@ -1,5 +1,5 @@
 -- ============================================================
---  Complex Comms — Database schema (Supabase / PostgreSQL)
+--  Blue Crane Vistas Portal — Database schema (Supabase / PostgreSQL)
 --  Run this ONCE in your Supabase project:
 --    Dashboard → SQL Editor → New query → paste → Run
 --
