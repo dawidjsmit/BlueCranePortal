@@ -220,13 +220,10 @@ async function showApp() {
   hideAll();
   $("#app-header").hidden = false;
   $("#app-shell").hidden = false;
+  // Top bar: only the user's email + role (logo is already in the bar).
   $("#user-box").innerHTML = `
-    <span class="role-chip ${me.role}">${ROLE_LABEL[me.role]}</span>
-    <span class="umail">${esc(me.full_name || me.email)}</span>
-    <button class="btn ghost small" id="set-pw-btn" title="Set or change your password">Password</button>
-    <button class="btn ghost small" id="signout">Sign out</button>`;
-  $("#signout").addEventListener("click", () => sb.auth.signOut());
-  $("#set-pw-btn").addEventListener("click", () => showSetPassword());
+    <span class="umail">${esc(me.email)}</span>
+    <span class="role-chip ${me.role}">${ROLE_LABEL[me.role]}</span>`;
 
   buildTabs();
   await loadData();
@@ -287,27 +284,65 @@ function defaultView() {
   return isTrustee() ? "dashboard" : (myUnitIds().size ? "myunits" : "dashboard");
 }
 
-function buildTabs() {
-  const tabs = [
-    { id: "dashboard", label: "Dashboard", ico: "🏠" },
-    { id: "tickets", label: "Tickets", ico: "🎟️" },
+// Navigation is organised into groups (main menus) with items (sub-menus).
+function navGroups() {
+  const groups = [
+    { items: [
+      { id: "dashboard", label: "Dashboard", ico: "🏠" },
+      { id: "tickets", label: "Tickets", ico: "🎟️" },
+    ]},
   ];
   if (isTrustee()) {
-    tabs.push({ id: "units", label: "Units", ico: "🏢" });
-    tabs.push({ id: "owners", label: "Owners", ico: "👤" });
-    tabs.push({ id: "tenants", label: "Tenants", ico: "🔑" });
-    tabs.push({ id: "occupants", label: "Occupants", ico: "🧑‍🤝‍🧑" });
-    tabs.push({ id: "pets", label: "Pets", ico: "🐾" });
-    tabs.push({ id: "layouts", label: "Layouts", ico: "📐" });
-    tabs.push({ id: "tickettypes", label: "Ticket types", ico: "🏷️" });
-    tabs.push({ id: "users", label: "Users", ico: "👥" });
+    groups.push({
+      title: "Registry",
+      items: [
+        { id: "units", label: "Units", ico: "🏢" },
+        { id: "owners", label: "Owners", ico: "👤" },
+        { id: "tenants", label: "Tenants", ico: "🔑" },
+        { id: "occupants", label: "Occupants", ico: "🧑‍🤝‍🧑" },
+        { id: "pets", label: "Pets", ico: "🐾" },
+      ],
+    });
+    groups.push({
+      title: "Admin",
+      items: [
+        { id: "layouts", label: "Layouts", ico: "📐" },
+        { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
+        { id: "users", label: "Users", ico: "👥" },
+      ],
+    });
   } else if (myUnitIds().size) {
-    tabs.push({ id: "myunits", label: myUnitIds().size > 1 ? "My units" : "My unit", ico: "🏢" });
+    groups[0].items.push({ id: "myunits", label: myUnitIds().size > 1 ? "My units" : "My unit", ico: "🏢" });
   }
-  $("#nav").innerHTML = tabs
-    .map((t, i) => `<button class="nav-btn ${i === 0 ? "active" : ""}" data-view="${t.id}">
-        <span class="nav-ico">${t.ico}</span><span>${t.label}</span></button>`)
-    .join("");
+  return groups;
+}
+
+function buildTabs() {
+  const groups = navGroups();
+  let first = true;
+  const html = groups.map((g) => {
+    const items = g.items.map((it) => {
+      const active = first ? " active" : "";
+      first = false;
+      return `<button class="nav-btn${active}" data-view="${it.id}">
+        <span class="nav-ico">${it.ico}</span><span>${it.label}</span></button>`;
+    }).join("");
+    return `<div class="nav-group">
+      ${g.title ? `<div class="nav-group-title">${g.title}</div>` : ""}
+      ${items}
+    </div>`;
+  }).join("");
+
+  // Account actions pinned to the bottom of the sidebar.
+  const footer = `
+    <div class="nav-footer">
+      <button class="nav-btn" id="set-pw-btn"><span class="nav-ico">🔑</span><span>Password</span></button>
+      <button class="nav-btn" id="signout"><span class="nav-ico">🚪</span><span>Sign out</span></button>
+    </div>`;
+
+  $("#nav").innerHTML = html + footer;
+  $("#signout").addEventListener("click", () => sb.auth.signOut());
+  $("#set-pw-btn").addEventListener("click", () => showSetPassword());
 }
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
@@ -1661,7 +1696,9 @@ $("#link-form").addEventListener("submit", async (e) => {
 /* ---------- Delegated events ---------- */
 document.addEventListener("click", async (e) => {
   const t = e.target;
-  if (t.dataset.view) showView(t.dataset.view);
+  // Nav/view buttons contain inner <span>s, so match the nearest [data-view].
+  const viewBtn = t.closest("[data-view]");
+  if (viewBtn) showView(viewBtn.dataset.view);
   if (t.hasAttribute("data-close")) closeOverlays();
   if (t.hasAttribute("data-new-ticket")) openTicketModal(null);
 
