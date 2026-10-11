@@ -67,7 +67,17 @@ let recovering = false; // true while handling a password-reset link
   await route();
 })();
 
+/* ---------- Mobile nav drawer toggle ---------- */
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#menu-btn")) {
+    document.body.classList.toggle("nav-open");
+  } else if (e.target.id === "scrim") {
+    document.body.classList.remove("nav-open");
+  }
+});
+
 function showNotConfigured() {
+  $("#app-shell").hidden = false;
   $("#boot-panel").innerHTML = `
     <h2>⚙️ Almost there — connect Supabase</h2>
     <p>This build supports multiple trustees and resident logins, but it needs
@@ -108,9 +118,9 @@ function hideAll() {
   $("#view-pending").hidden = true;
   $("#view-forgot").hidden = true;
   $("#view-set-password").hidden = true;
-  $("#main").hidden = true;
-  $("#tabs").hidden = true;
-  $("#user-box").hidden = true;
+  $("#app-header").hidden = true;
+  $("#app-shell").hidden = true;
+  document.body.classList.remove("nav-open");
 }
 function showLogin() {
   hideAll();
@@ -127,8 +137,6 @@ function showSetPassword() {
 function showPending() {
   hideAll();
   $("#view-pending").hidden = false;
-  $("#user-box").hidden = false;
-  $("#user-box").innerHTML = `<span>${esc(me.email)}</span>`;
 }
 
 const redirectUrl = () => window.location.href.split("#")[0].split("?")[0];
@@ -210,18 +218,15 @@ $("#pending-signout").addEventListener("click", () => sb.auth.signOut());
 /* ---------- Main app ---------- */
 async function showApp() {
   hideAll();
-  $("#main").hidden = false;
-  $("#user-box").hidden = false;
+  $("#app-header").hidden = false;
+  $("#app-shell").hidden = false;
   $("#user-box").innerHTML = `
     <span class="role-chip ${me.role}">${ROLE_LABEL[me.role]}</span>
     <span class="umail">${esc(me.full_name || me.email)}</span>
-    <button class="btn ghost small" id="set-pw-btn" title="Set or change your password">Set password</button>
+    <button class="btn ghost small" id="set-pw-btn" title="Set or change your password">Password</button>
     <button class="btn ghost small" id="signout">Sign out</button>`;
   $("#signout").addEventListener("click", () => sb.auth.signOut());
-  $("#set-pw-btn").addEventListener("click", () => {
-    // Reuse the set-password screen; skipping returns here.
-    showSetPassword();
-  });
+  $("#set-pw-btn").addEventListener("click", () => showSetPassword());
 
   buildTabs();
   await loadData();
@@ -283,24 +288,25 @@ function defaultView() {
 }
 
 function buildTabs() {
-  const tabs = [{ id: "dashboard", label: "Dashboard" }, { id: "tickets", label: "Tickets" }];
+  const tabs = [
+    { id: "dashboard", label: "Dashboard", ico: "🏠" },
+    { id: "tickets", label: "Tickets", ico: "🎟️" },
+  ];
   if (isTrustee()) {
-    tabs.push({ id: "units", label: "Units" });
-    tabs.push({ id: "owners", label: "Owners" });
-    tabs.push({ id: "tenants", label: "Tenants" });
-    tabs.push({ id: "occupants", label: "Occupants" });
-    tabs.push({ id: "pets", label: "Pets" });
-    tabs.push({ id: "layouts", label: "Layouts" });
-    tabs.push({ id: "tickettypes", label: "Ticket types" });
-    tabs.push({ id: "users", label: "Users" });
+    tabs.push({ id: "units", label: "Units", ico: "🏢" });
+    tabs.push({ id: "owners", label: "Owners", ico: "👤" });
+    tabs.push({ id: "tenants", label: "Tenants", ico: "🔑" });
+    tabs.push({ id: "occupants", label: "Occupants", ico: "🧑‍🤝‍🧑" });
+    tabs.push({ id: "pets", label: "Pets", ico: "🐾" });
+    tabs.push({ id: "layouts", label: "Layouts", ico: "📐" });
+    tabs.push({ id: "tickettypes", label: "Ticket types", ico: "🏷️" });
+    tabs.push({ id: "users", label: "Users", ico: "👥" });
   } else if (myUnitIds().size) {
-    // Residents, gardeners, service providers see their linked unit(s).
-    tabs.push({ id: "myunits", label: myUnitIds().size > 1 ? "My units" : "My unit" });
+    tabs.push({ id: "myunits", label: myUnitIds().size > 1 ? "My units" : "My unit", ico: "🏢" });
   }
-  const el = $("#tabs");
-  el.hidden = false;
-  el.innerHTML = tabs
-    .map((t, i) => `<button class="tab-btn ${i === 0 ? "active" : ""}" data-view="${t.id}">${t.label}</button>`)
+  $("#nav").innerHTML = tabs
+    .map((t, i) => `<button class="nav-btn ${i === 0 ? "active" : ""}" data-view="${t.id}">
+        <span class="nav-ico">${t.ico}</span><span>${t.label}</span></button>`)
     .join("");
 }
 
@@ -355,7 +361,8 @@ async function deleteFile(path) {
 
 /* ---------- Views ---------- */
 function showView(name) {
-  $$(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+  $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+  document.body.classList.remove("nav-open"); // close mobile drawer on navigate
   const render = {
     dashboard: renderDashboard,
     tickets: renderTickets,
@@ -1702,7 +1709,7 @@ $$(".modal-overlay").forEach((ov) =>
 
 function closeOverlays() { $$(".modal-overlay").forEach((o) => o.classList.remove("active")); }
 function refreshActiveView() {
-  const active = $(".tab-btn.active")?.dataset.view || "dashboard";
+  const active = $(".nav-btn.active")?.dataset.view || "dashboard";
   showView(active);
 }
 

@@ -8,24 +8,37 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="app-header">
+  <!-- Top bar: shown once signed in. Holds the mobile menu button + account. -->
+  <header class="app-header" id="app-header" hidden>
     <div class="header-inner">
+      <button class="menu-btn" id="menu-btn" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
       <div class="brand">
-        <img class="logo" src="assets/logo.svg" alt="Blue Crane Vistas Portal" width="40" height="40" />
+        <img class="logo" src="assets/logo.svg" alt="Blue Crane Vistas Portal" width="36" height="36" />
         <div>
           <h1>Blue Crane Vistas</h1>
           <p class="subtitle">Resident &amp; trustee portal</p>
         </div>
       </div>
-      <nav class="tabs" id="tabs" hidden></nav>
-      <div class="user-box" id="user-box" hidden></div>
+      <div class="user-box" id="user-box"></div>
     </div>
   </header>
 
-  <main class="container" id="main">
-    <!-- Everything is rendered by app.js depending on auth + role. -->
-    <div class="panel" id="boot-panel"><p class="empty">Loading…</p></div>
-  </main>
+  <!-- App shell: sidebar (desktop) / drawer (mobile) + content area -->
+  <div class="app-shell" id="app-shell" hidden>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img class="logo" src="assets/logo.svg" alt="" width="34" height="34" />
+        <span>Blue Crane Vistas</span>
+      </div>
+      <nav class="nav" id="nav"></nav>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="content" id="main">
+      <div class="panel" id="boot-panel"><p class="empty">Loading…</p></div>
+    </main>
+  </div>
 
   <!-- Login view -->
   <section id="view-login" class="auth-wrap" hidden>
