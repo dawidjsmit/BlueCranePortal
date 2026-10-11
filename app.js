@@ -281,7 +281,10 @@ const canManagePhotos = (unitId) => isTrustee() || amOwnerOf(unitId);
 const showInactive = () => isTrustee();
 
 function defaultView() {
-  return isTrustee() ? "dashboard" : (myUnitIds().size ? "myunits" : "dashboard");
+  if (isTrustee()) return "dashboard";
+  // Gardeners / service providers care about jobs, not units -> land on Tickets.
+  if (isAssignee()) return "tickets";
+  return myUnitIds().size ? "myunits" : "dashboard";
 }
 
 // Navigation is organised into groups (main menus) with items (sub-menus).
@@ -311,7 +314,9 @@ function navGroups() {
         { id: "users", label: "Users", ico: "👥" },
       ],
     });
-  } else if (myUnitIds().size) {
+  } else if (isResident() && myUnitIds().size) {
+    // Residents (owner/tenant/occupant) get a 'My unit(s)' entry.
+    // Gardeners/service providers don't — they work from Tickets.
     groups[0].items.push({ id: "myunits", label: myUnitIds().size > 1 ? "My units" : "My unit", ico: "🏢" });
   }
   return groups;
