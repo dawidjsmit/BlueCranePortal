@@ -1,5 +1,5 @@
 -- ============================================================
---  Complex Comms — Row-Level Security (RLS) policies
+--  Blue Crane Vistas Portal — Row-Level Security (RLS) policies
 --  Run AFTER 01_schema.sql.
 --
 --  These rules are enforced by the database itself. Even if the

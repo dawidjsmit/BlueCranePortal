@@ -1,5 +1,5 @@
 -- ============================================================
---  Complex Comms — Optional seed data
+--  Blue Crane Vistas Portal — Optional seed data
 --  Run AFTER 01_schema.sql and 02_policies.sql, only if you want
 --  some example units to start with. Safe to skip.
 --

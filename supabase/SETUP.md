@@ -1,6 +1,6 @@
 # 🔧 Supabase setup — one-time, ~10 minutes
 
-This turns Complex Comms from a single-device notebook into a real
+This turns Blue Crane Vistas Portal from a single-device notebook into a real
 multi-user app with magic-link logins and role-based access.
 
 Everything here is free for a complex your size.
@@ -11,7 +11,7 @@ Everything here is free for a complex your size.
 
 1. Go to **https://supabase.com** and sign up (free). You can sign in with GitHub.
 2. Click **New project**.
-   - **Name:** `complex-comms` (anything you like)
+   - **Name:** `BlueCranePortal` (anything you like)
    - **Database password:** generate one and save it somewhere (you rarely need it)
    - **Region:** pick the one closest to your complex
 3. Wait ~2 minutes for it to provision.
@@ -70,7 +70,7 @@ If each run says *Success. No rows returned*, you're good.
    by default in Supabase.
 4. Left sidebar → **Authentication → URL Configuration**:
    - Set **Site URL** to your live app, e.g.
-     `https://dawidjsmit.github.io/complex-comms/`
+     `https://dawidjsmit.github.io/BlueCranePortal/`
    - Add the same URL under **Redirect URLs**.
    (This is what makes both the magic link AND the password-reset link
    bring people back to your app.)
