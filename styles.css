@@ -42,16 +42,19 @@ body {
 }
 .header-inner {
   height: 100%;
-  padding: 0 16px 0 12px;
-  display: flex; align-items: center; gap: 12px;
+  padding: 0 14px 0 10px;
+  display: flex; align-items: center; gap: 10px;
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .app-header h1 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink); white-space: nowrap; }
 .subtitle { margin: 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .logo { font-size: 32px; } /* emoji fallback (pending screen) */
-img.logo { width: 36px; height: 36px; display: block; border-radius: 9px; }
+img.logo { width: 34px; height: 34px; display: block; border-radius: 9px; flex-shrink: 0; }
 img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
-.user-box { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+/* Top bar account info: email + role, right-aligned */
+.user-box { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); min-width: 0; }
+.user-box .umail { color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.user-box .role-chip { flex-shrink: 0; }
 
 /* Hamburger (mobile only) */
 .menu-btn {
@@ -76,7 +79,12 @@ img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
   padding: 6px 10px 14px;
 }
 .sidebar-brand img { border-radius: 8px; }
-.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.nav-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.nav-group-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: rgba(199,210,228,.55); padding: 12px 12px 4px;
+}
 .nav-btn {
   display: flex; align-items: center; gap: 10px;
   background: none; border: none; cursor: pointer; text-align: left;
@@ -84,9 +92,16 @@ img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
   padding: 10px 12px; border-radius: 9px; width: 100%;
   transition: background .15s, color .15s;
 }
-.nav-btn .nav-ico { width: 18px; text-align: center; opacity: .9; }
+.nav-btn .nav-ico { width: 18px; text-align: center; opacity: .9; flex-shrink: 0; }
 .nav-btn:hover { background: rgba(255,255,255,.07); color: #fff; }
 .nav-btn.active { background: var(--brand); color: #fff; font-weight: 600; }
+
+/* Account actions pinned to the bottom of the sidebar */
+.nav-footer {
+  margin-top: auto; padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: flex; flex-direction: column; gap: 2px;
+}
 
 .scrim { display: none; }
 
@@ -99,8 +114,9 @@ img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
 /* ===== Responsive: tablet & phone ===== */
 @media (max-width: 860px) {
   .menu-btn { display: flex; }
-  .app-header h1 { font-size: 15px; }
   .subtitle { display: none; }
+  /* On phones the hamburger + logo lead; brand text hidden to save room */
+  .app-header .brand h1 { display: none; }
   /* Sidebar becomes an off-canvas drawer */
   .sidebar {
     position: fixed; top: 0; left: 0; height: 100vh; z-index: 50;
@@ -116,7 +132,9 @@ img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
   .content { padding: 16px; }
 }
 @media (max-width: 480px) {
-  .user-box .umail { display: none; } /* keep header tidy on small phones */
+  /* keep the email visible but truncate so it never overflows */
+  .user-box { gap: 6px; font-size: 12px; }
+  .user-box .umail { max-width: 42vw; }
   .content { padding: 12px; }
 }
 
@@ -275,9 +293,7 @@ tbody tr:hover { background: #f7f9fc; }
 
 /* ===== Multi-user additions ===== */
 
-/* User box in header (header is light now, so dark text) */
-.user-box { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-.user-box .umail { color: var(--ink); font-weight: 500; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* (user-box / umail styling lives in the top-bar section above) */
 .role-chip { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: #eef2ff; color: var(--brand-dark); }
 .role-chip.trustee { background: var(--brand); color: #fff; }
 
