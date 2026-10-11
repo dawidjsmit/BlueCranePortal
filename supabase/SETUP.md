@@ -53,6 +53,9 @@ in the SQL Editor the same way:
 - **`11_phase_t2_drop_requests.sql`** — removes the old `requests` /
   `request_log` tables now that the app uses Tickets. Run this **after**
   the Phase T2 app is deployed and you've confirmed tickets work.
+- **`12_fix_assignee_ticket_visibility.sql`** — fix so gardeners /
+  service providers can see tickets assigned to their role (the old check
+  referenced the dropped `requests` table). Run this once.
 
 If each run says *Success. No rows returned*, you're good.
 
