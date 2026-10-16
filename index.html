@@ -159,6 +159,44 @@
     </div>
   </div>
 
+  <!-- Communal area TYPE maintenance modal -->
+  <div class="modal-overlay" id="areatype-modal">
+    <div class="modal">
+      <h3 id="areatype-modal-title">Add type</h3>
+      <form id="areatype-form">
+        <input type="hidden" id="areatype-id" />
+        <label>Name <input id="areatype-name" required placeholder="e.g. Road" /></label>
+        <label>Sort order <input id="areatype-order" type="number" min="0" /></label>
+        <label class="check"><input id="areatype-active" type="checkbox" checked /> Active</label>
+        <p id="areatype-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save type</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Communal AREA maintenance modal -->
+  <div class="modal-overlay" id="area-modal">
+    <div class="modal">
+      <h3 id="area-modal-title">Add communal area</h3>
+      <form id="area-form">
+        <input type="hidden" id="area-id" />
+        <label>Code <input id="area-code" required placeholder="e.g. GATE-1" /></label>
+        <label>Type <select id="area-type"></select></label>
+        <label>Name <input id="area-name" required placeholder="e.g. Main gate" /></label>
+        <label>Description <textarea id="area-description" rows="2"></textarea></label>
+        <p class="muted tiny">After saving, open the area to add photos.</p>
+        <p id="area-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save area</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="detail-modal">
     <div class="modal wide"><div id="detail-content"></div>
       <div class="modal-actions"><button type="button" class="btn ghost" data-close>Close</button></div>
