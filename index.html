@@ -127,11 +127,17 @@
       <h3 id="ticket-modal-title">Log a ticket</h3>
       <form id="ticket-form">
         <input type="hidden" id="ticket-id" />
-        <label>Unit <select id="ticket-unit" required></select></label>
+        <label>Logged by <input id="ticket-loggedby" readonly /></label>
         <label>Type <select id="ticket-type" required></select></label>
+        <label>From / With / About / At Unit <select id="ticket-unit"></select></label>
+        <p class="muted tiny" style="margin:-6px 0 12px">— or, if it's not about a unit, pick a communal area instead —</p>
+        <div class="row">
+          <label>Communal area type <select id="ticket-areatype"></select></label>
+          <label>Communal area <select id="ticket-area"></select></label>
+        </div>
         <label>Heading <input id="ticket-heading" required placeholder="e.g. Leaking geyser" /></label>
         <label>Detailed description <textarea id="ticket-description" rows="4"></textarea></label>
-        <p class="muted tiny">After saving, you can attach photos and then Submit &amp; send the ticket to the trustees.</p>
+        <p class="muted tiny">Choose <strong>either</strong> a Unit <strong>or</strong> a Communal area (not both). After saving you can attach photos, then Submit &amp; send.</p>
         <p id="ticket-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>

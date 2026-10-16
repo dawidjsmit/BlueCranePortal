@@ -1325,8 +1325,7 @@ function renderAreas() {
       <td>${esc(areaTypeName(a.type_id))}</td>
       <td>${photos} photo${photos === 1 ? "" : "s"}</td>
       <td style="text-align:right">
-        <button class="btn ghost small" data-open-area="${a.id}">Open</button>
-        <button class="btn ghost small" data-edit-area="${a.id}">Edit</button></td>
+        <button class="btn ghost small" data-open-area="${a.id}">Open</button></td>
     </tr>`;
   }).join("");
   $("#main").innerHTML = `
@@ -1527,12 +1526,21 @@ function statCard(num, label, cls) {
 function ticketTypeName(id) {
   return state.ticketTypes.find((t) => t.id === id)?.name || "—";
 }
+// Where a ticket is about: a unit, or a communal area.
+function ticketTargetLabel(t) {
+  if (t.unit_id) return "Unit " + unitNum(t.unit_id);
+  if (t.communal_area_id) {
+    const a = state.areas.find((x) => x.id === t.communal_area_id);
+    return a ? (a.name) : "Communal area";
+  }
+  return "—";
+}
 function ticketCard(t) {
   const assigned = t.assigned_role ? `· to <strong>${ROLE_LABEL[t.assigned_role] || t.assigned_role}</strong>` : "";
   return `<div class="request-card" data-open-ticket="${t.id}">
     <div class="rc-top">
       <div><div class="rc-title">${esc(t.heading)}</div>
-        <div class="rc-meta">Unit <strong>${esc(unitNum(t.unit_id))}</strong>
+        <div class="rc-meta"><strong>${esc(ticketTargetLabel(t))}</strong>
           · <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span> ${assigned}</div></div>
       <span class="pill ticket-${t.status}">${TICKET_STATUS_LABEL[t.status]}</span>
     </div></div>`;
@@ -1566,7 +1574,7 @@ async function openTicket(id) {
     <span class="pill ticket-${t.status}">${TICKET_STATUS_LABEL[t.status]}</span>
     <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span>
     <dl class="detail-grid">
-      <dt>Unit</dt><dd>${esc(unitNum(t.unit_id))}</dd>
+      <dt>${t.communal_area_id ? "Communal area" : "Unit"}</dt><dd>${esc(ticketTargetLabel(t))}</dd>
       <dt>Logged by</dt><dd>${esc(loggerName(t))}${t.logged_by_role ? " (" + (ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""}</dd>
       <dt>Logged</dt><dd>${fmtDate(t.created_at)}</dd>
       <dt>Assigned to</dt><dd>${t.assigned_role ? (ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</dd>
@@ -1803,25 +1811,65 @@ document.addEventListener("submit", async (e) => {
 function openTicketModal(ticket) {
   $("#ticket-modal-title").textContent = ticket ? "Edit ticket" : "Log a ticket";
   $("#ticket-id").value = ticket?.id || "";
-  // Unit dropdown: units the user may log against (RLS also enforces).
-  const unitIds = isTrustee() ? state.units.map((u) => u.id) : [...myUnitIds()];
-  const units = state.units.filter((u) => unitIds.includes(u.id));
-  $("#ticket-unit").innerHTML = units
-    .map((u) => `<option value="${u.id}" ${ticket?.unit_id === u.id ? "selected" : ""}>${esc(u.number)}</option>`).join("");
-  // Type dropdown (active types)
-  $("#ticket-type").innerHTML = state.ticketTypes.filter((tt) => tt.active)
+
+  // Logged by (read-only) — the current user.
+  $("#ticket-loggedby").value = me.full_name || me.email;
+
+  // Type dropdown (active types).
+  $("#ticket-type").innerHTML = state.ticketTypes.filter((tt) => tt.active || tt.id === ticket?.type_id)
     .map((tt) => `<option value="${tt.id}" ${ticket?.type_id === tt.id ? "selected" : ""}>${esc(tt.name)}</option>`).join("");
+
+  // Unit dropdown: ALL units for every role (optional). Default to the
+  // resident's own unit when creating a new ticket (not for gardeners/SPs,
+  // whose "units" come from assigned tickets and aren't a sensible default).
+  const myUnits = isResident() ? [...myUnitIds()] : [];
+  const defaultUnit = ticket ? ticket.unit_id : (myUnits.length ? myUnits[0] : "");
+  $("#ticket-unit").innerHTML = `<option value="">— none —</option>` +
+    state.units.map((u) => `<option value="${u.id}" ${defaultUnit === u.id ? "selected" : ""}>${esc(u.number)}</option>`).join("");
+
+  // Communal area type (filters the area list) + area (both optional).
+  $("#ticket-areatype").innerHTML = `<option value="">— type —</option>` +
+    state.areaTypes.filter((t) => t.active).map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
+  // If editing a communal-area ticket, preselect its type.
+  if (ticket?.communal_area_id) {
+    const a = state.areas.find((x) => x.id === ticket.communal_area_id);
+    if (a?.type_id) $("#ticket-areatype").value = a.type_id;
+  }
+  populateTicketAreas(ticket?.communal_area_id || "");
+
   $("#ticket-heading").value = ticket?.heading || "";
   $("#ticket-description").value = ticket?.description || "";
   $("#ticket-msg").textContent = "";
   $("#ticket-modal").classList.add("active");
 }
 
+// Fill the communal-area dropdown based on the chosen type.
+function populateTicketAreas(selectedId) {
+  const typeId = $("#ticket-areatype").value;
+  const areas = state.areas.filter((a) => !typeId || a.type_id === typeId);
+  $("#ticket-area").innerHTML = `<option value="">— none —</option>` +
+    areas.map((a) => `<option value="${a.id}" ${selectedId === a.id ? "selected" : ""}>${esc(a.code)} — ${esc(a.name)}</option>`).join("");
+}
+
 $("#ticket-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = $("#ticket-id").value;
+  const unitId = $("#ticket-unit").value || null;
+  const areaId = $("#ticket-area").value || null;
+
+  // Enforce: exactly one of Unit / Communal area.
+  if (unitId && areaId) {
+    setMsg("ticket-msg", "⚠️ Choose either a Unit or a Communal area — not both.", false);
+    return;
+  }
+  if (!unitId && !areaId) {
+    setMsg("ticket-msg", "⚠️ Please choose either a Unit or a Communal area.", false);
+    return;
+  }
+
   const payload = {
-    unit_id: $("#ticket-unit").value,
+    unit_id: unitId,
+    communal_area_id: areaId,
     type_id: $("#ticket-type").value || null,
     heading: $("#ticket-heading").value.trim(),
     description: $("#ticket-description").value.trim(),
@@ -1998,6 +2046,14 @@ document.addEventListener("change", (e) => {
   if (e.target.id === "tenant-active") toggleLeftOn("tenant");
   if (e.target.id === "occupant-active") toggleLeftOn("occupant");
   if (e.target.id === "pet-type") togglePetOther();
+  if (e.target.id === "ticket-areatype") populateTicketAreas("");
+  // Picking a Unit clears any communal-area selection, and vice versa.
+  if (e.target.id === "ticket-unit" && e.target.value) {
+    $("#ticket-areatype").value = ""; populateTicketAreas("");
+  }
+  if (e.target.id === "ticket-area" && e.target.value) {
+    $("#ticket-unit").value = "";
+  }
 });
 $$(".modal-overlay").forEach((ov) =>
   ov.addEventListener("click", (e) => { if (e.target === ov) ov.classList.remove("active"); }));
