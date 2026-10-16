@@ -56,6 +56,9 @@ in the SQL Editor the same way:
 - **`12_fix_assignee_ticket_visibility.sql`** — fix so gardeners /
   service providers can see tickets assigned to their role (the old check
   referenced the dropped `requests` table). Run this once.
+- **`13_conduct_rules.sql`** — a `documents` table holding the current
+  conduct-rules PDF reference. Trustees upload/replace it; every signed-in
+  user can read it on the new "Conduct rules" screen.
 
 If each run says *Success. No rows returned*, you're good.
 
