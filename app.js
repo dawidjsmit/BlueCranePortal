@@ -47,7 +47,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null };
 let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
@@ -293,6 +293,7 @@ function navGroups() {
     { items: [
       { id: "dashboard", label: "Dashboard", ico: "🏠" },
       { id: "tickets", label: "Tickets", ico: "🎟️" },
+      { id: "conduct", label: "Conduct rules", ico: "📖" },
     ]},
   ];
   if (isTrustee()) {
@@ -352,7 +353,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -365,6 +366,7 @@ async function loadData() {
     sb.from("unit_members").select("*"),
     sb.from("ticket_types").select("*").order("sort_order"),
     sb.from("ticket_photos").select("*").order("created_at"),
+    sb.from("documents").select("*").eq("kind", "conduct_rules").order("created_at", { ascending: false }).limit(1),
   ]);
   state.units = units.data || [];
   state.tickets = tickets.data || [];
@@ -378,6 +380,7 @@ async function loadData() {
   state.members = members.data || [];
   state.ticketTypes = ticketTypes.data || [];
   state.ticketPhotos = ticketPhotos.data || [];
+  state.conductDoc = (conductDocs.data && conductDocs.data[0]) || null;
 }
 
 /* ---------- Storage helpers (Phase 4) ---------- */
@@ -406,6 +409,7 @@ function showView(name) {
   const render = {
     dashboard: renderDashboard,
     tickets: renderTickets,
+    conduct: renderConductRules,
     units: renderUnits,
     myunits: renderMyUnits,
     owners: renderOwnersList,
@@ -1245,6 +1249,63 @@ $("#type-form").addEventListener("submit", async (e) => {
   await loadData();
   refreshActiveView();
 });
+
+/* ---------- Conduct rules (visible to all users) ---------- */
+function renderConductRules() {
+  const doc = state.conductDoc;
+  const url = doc ? publicUrl(doc.storage_path) : "";
+
+  const viewer = doc
+    ? `<p class="muted tiny">Uploaded ${fmtDate(doc.created_at)}</p>
+       <div class="detail-actions">
+         <a class="btn primary" href="${url}" target="_blank" rel="noopener">📖 Open / download the rules</a>
+       </div>
+       <div class="doc-embed">
+         <iframe title="Conduct rules" src="${url}#view=FitH"></iframe>
+       </div>`
+    : `<div class="empty">The conduct-rules document hasn't been uploaded yet.${isTrustee() ? " Use the button above to add it." : " Please check back soon."}</div>`;
+
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head">
+        <h2>📖 Conduct rules</h2>
+        ${isTrustee()
+          ? `<label class="btn primary small upload-label">${doc ? "Replace document" : "+ Upload document"}
+               <input type="file" accept="application/pdf,.pdf" id="conduct-input" hidden /></label>`
+          : ""}
+      </div>
+      <p class="muted tiny">The complex's conduct rules. ${isTrustee() ? "Upload a PDF; every resident can read it here." : "Tap below to read them."}</p>
+      <p id="conduct-msg" class="login-msg"></p>
+      ${viewer}
+    </div>`;
+
+  const input = $("#conduct-input");
+  if (input) input.addEventListener("change", onConductChosen);
+}
+
+async function onConductChosen(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.type && file.type !== "application/pdf") {
+    setMsg("conduct-msg", "⚠️ Please upload a PDF file.", false);
+    return;
+  }
+  setMsg("conduct-msg", "Uploading…", true);
+  try {
+    const path = await uploadFile(file, "documents/conduct");
+    // Insert the new document reference (keeps history; newest is shown).
+    const { error } = await sb.from("documents").insert({
+      kind: "conduct_rules", title: file.name, storage_path: path, uploaded_by: me.id,
+    });
+    if (error) { await deleteFile(path); throw error; }
+    // Optionally clean up the previous file from storage.
+    if (state.conductDoc) await deleteFile(state.conductDoc.storage_path);
+    await loadData();
+    renderConductRules();
+  } catch (err) {
+    setMsg("conduct-msg", "⚠️ " + (err.message || "Upload failed"), false);
+  }
+}
 
 function renderPeople() {
   const rows = state.profiles.map((p) => `
