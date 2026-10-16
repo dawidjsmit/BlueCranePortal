@@ -59,6 +59,9 @@ in the SQL Editor the same way:
 - **`13_conduct_rules.sql`** — a `documents` table holding the current
   conduct-rules PDF reference. Trustees upload/replace it; every signed-in
   user can read it on the new "Conduct rules" screen.
+- **`14_communal_areas.sql`** — Communal Areas: a managed type list
+  (Road/Gate/Grass/Flower Bed/Lamp pole), the areas themselves (code, type,
+  name, description), and their photos. Trustees maintain; all users read.
 
 If each run says *Success. No rows returned*, you're good.
 

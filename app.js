@@ -47,7 +47,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [] };
 let recovering = false; // true while handling a password-reset link
 
 /* ---------- Boot ---------- */
@@ -305,12 +305,14 @@ function navGroups() {
         { id: "tenants", label: "Tenants", ico: "🔑" },
         { id: "occupants", label: "Occupants", ico: "🧑‍🤝‍🧑" },
         { id: "pets", label: "Pets", ico: "🐾" },
+        { id: "areas", label: "Communal areas", ico: "🌳" },
       ],
     });
     groups.push({
       title: "Admin",
       items: [
         { id: "layouts", label: "Layouts", ico: "📐" },
+        { id: "areatypes", label: "Communal area types", ico: "🏷️" },
         { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
         { id: "users", label: "Users", ico: "👥" },
       ],
@@ -353,7 +355,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -367,6 +369,9 @@ async function loadData() {
     sb.from("ticket_types").select("*").order("sort_order"),
     sb.from("ticket_photos").select("*").order("created_at"),
     sb.from("documents").select("*").eq("kind", "conduct_rules").order("created_at", { ascending: false }).limit(1),
+    sb.from("communal_area_types").select("*").order("sort_order"),
+    sb.from("communal_areas").select("*").order("code"),
+    sb.from("communal_area_photos").select("*").order("created_at"),
   ]);
   state.units = units.data || [];
   state.tickets = tickets.data || [];
@@ -381,6 +386,9 @@ async function loadData() {
   state.ticketTypes = ticketTypes.data || [];
   state.ticketPhotos = ticketPhotos.data || [];
   state.conductDoc = (conductDocs.data && conductDocs.data[0]) || null;
+  state.areaTypes = areaTypes.data || [];
+  state.areas = areas.data || [];
+  state.areaPhotos = areaPhotos.data || [];
 }
 
 /* ---------- Storage helpers (Phase 4) ---------- */
@@ -418,6 +426,9 @@ function showView(name) {
     pets: renderPetsList,
     layouts: renderLayouts,
     tickettypes: renderTicketTypes,
+    areatypes: renderAreaTypes,
+    areas: renderAreas,
+    areadetail: renderAreaDetail,
     users: renderPeople,
   }[name];
   if (render) render();
@@ -1250,6 +1261,181 @@ $("#type-form").addEventListener("submit", async (e) => {
   refreshActiveView();
 });
 
+/* ---------- Communal area types (trustee) ---------- */
+function areaTypeName(id) {
+  return state.areaTypes.find((t) => t.id === id)?.name || "—";
+}
+
+function renderAreaTypes() {
+  const rows = state.areaTypes.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
+    <td><strong>${esc(tt.name)}</strong></td>
+    <td>${tt.sort_order}</td>
+    <td>${tt.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Hidden</span>'}</td>
+    <td style="text-align:right"><button class="btn ghost small" data-edit-areatype="${tt.id}">Edit</button></td>
+  </tr>`).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🏷️ Communal area types</h2>
+        <button class="btn primary small" id="add-areatype-btn">+ Add type</button></div>
+      <p class="muted tiny">Types of communal area (Road, Gate, Grass, Flower Bed, Lamp pole, …).</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Name</th><th>Order</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No types yet.</td></tr>`}</tbody></table></div>
+    </div>`;
+  $("#add-areatype-btn").addEventListener("click", () => openAreaTypeModal(null));
+}
+
+function openAreaTypeModal(tt) {
+  $("#areatype-modal-title").textContent = tt ? "Edit type" : "Add type";
+  $("#areatype-id").value = tt?.id || "";
+  $("#areatype-name").value = tt?.name || "";
+  $("#areatype-order").value = tt?.sort_order ?? state.areaTypes.length + 1;
+  $("#areatype-active").checked = tt ? !!tt.active : true;
+  $("#areatype-msg").textContent = "";
+  $("#areatype-modal").classList.add("active");
+}
+
+$("#areatype-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#areatype-id").value;
+  const payload = {
+    name: $("#areatype-name").value.trim(),
+    sort_order: parseInt($("#areatype-order").value, 10) || 0,
+    active: $("#areatype-active").checked,
+  };
+  const { error } = id
+    ? await sb.from("communal_area_types").update(payload).eq("id", id)
+    : await sb.from("communal_area_types").insert(payload);
+  if (error) {
+    setMsg("areatype-msg", error.message.includes("duplicate") ? "That type name already exists." : "⚠️ " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
+/* ---------- Communal areas (trustee) ---------- */
+function renderAreas() {
+  const rows = state.areas.map((a) => {
+    const photos = state.areaPhotos.filter((p) => p.area_id === a.id).length;
+    return `<tr>
+      <td><strong>${esc(a.code)}</strong></td>
+      <td>${esc(a.name)}</td>
+      <td>${esc(areaTypeName(a.type_id))}</td>
+      <td>${photos} photo${photos === 1 ? "" : "s"}</td>
+      <td style="text-align:right">
+        <button class="btn ghost small" data-open-area="${a.id}">Open</button>
+        <button class="btn ghost small" data-edit-area="${a.id}">Edit</button></td>
+    </tr>`;
+  }).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🌳 Communal areas</h2>
+        <button class="btn primary small" id="add-area-btn">+ Add area</button></div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Code</th><th>Name</th><th>Type</th><th>Photos</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No communal areas yet.</td></tr>`}</tbody></table></div>
+    </div>`;
+  $("#add-area-btn").addEventListener("click", () => openAreaModal(null));
+}
+
+function openAreaModal(area) {
+  $("#area-modal-title").textContent = area ? "Edit communal area" : "Add communal area";
+  $("#area-id").value = area?.id || "";
+  $("#area-code").value = area?.code || "";
+  $("#area-name").value = area?.name || "";
+  $("#area-description").value = area?.description || "";
+  $("#area-type").innerHTML = `<option value="">— type —</option>` +
+    state.areaTypes.filter((t) => t.active || t.id === area?.type_id)
+      .map((t) => `<option value="${t.id}" ${area?.type_id === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("");
+  $("#area-msg").textContent = "";
+  $("#area-modal").classList.add("active");
+}
+
+$("#area-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#area-id").value;
+  const payload = {
+    code: $("#area-code").value.trim(),
+    name: $("#area-name").value.trim(),
+    description: $("#area-description").value.trim(),
+    type_id: $("#area-type").value || null,
+  };
+  const { error } = id
+    ? await sb.from("communal_areas").update(payload).eq("id", id)
+    : await sb.from("communal_areas").insert(payload);
+  if (error) {
+    setMsg("area-msg", error.message.includes("duplicate") ? "That code already exists." : "⚠️ " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
+/* ---------- Communal area detail + photos ---------- */
+let currentAreaId = null;
+
+function renderAreaDetail(areaId) {
+  currentAreaId = areaId || currentAreaId;
+  const a = state.areas.find((x) => x.id === currentAreaId);
+  if (!a) return renderAreas();
+  const photos = state.areaPhotos.filter((p) => p.area_id === a.id);
+
+  $("#main").innerHTML = `
+    <button class="link-btn" data-back-view="areas">← Back to communal areas</button>
+    <div class="panel">
+      <div class="panel-head"><h2>🌳 ${esc(a.name)}</h2>
+        <button class="btn ghost small" data-edit-area="${a.id}">Edit</button></div>
+      <dl class="detail-grid">
+        <dt>Code</dt><dd>${esc(a.code)}</dd>
+        <dt>Type</dt><dd>${esc(areaTypeName(a.type_id))}</dd>
+        <dt>Description</dt><dd>${esc(a.description || "—")}</dd>
+      </dl>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>📷 Photos</h2>
+        <label class="btn primary small upload-label">+ Add photo
+          <input type="file" accept="image/*" id="area-photo-input" hidden /></label></div>
+      <p id="area-photo-msg" class="login-msg"></p>
+      ${photos.length ? `<div class="photo-grid">${photos.map((p) =>
+        `<figure class="photo-item"><a href="${publicUrl(p.storage_path)}" target="_blank" rel="noopener">
+          <img src="${publicUrl(p.storage_path)}" loading="lazy" /></a>
+          <button class="photo-del" data-del-area-photo="${p.id}">✕</button></figure>`).join("")}</div>`
+        : `<div class="empty">No photos yet.</div>`}
+    </div>`;
+  const input = $("#area-photo-input");
+  if (input) input.addEventListener("change", (e) => onAreaPhotoChosen(e, a.id));
+}
+
+async function onAreaPhotoChosen(e, areaId) {
+  const file = e.target.files[0];
+  if (!file) return;
+  setMsg("area-photo-msg", "Uploading…", true);
+  try {
+    const path = await uploadFile(file, `areas/${areaId}`);
+    const { error } = await sb.from("communal_area_photos").insert({
+      area_id: areaId, storage_path: path, uploaded_by: me.id,
+    });
+    if (error) { await deleteFile(path); throw error; }
+    await loadData();
+    renderAreaDetail(areaId);
+  } catch (err) {
+    setMsg("area-photo-msg", "⚠️ " + (err.message || "Upload failed"), false);
+  }
+}
+
+async function deleteAreaPhoto(photoId) {
+  const photo = state.areaPhotos.find((p) => p.id === photoId);
+  if (!photo) return;
+  if (!confirm("Delete this photo?")) return;
+  await sb.from("communal_area_photos").delete().eq("id", photoId);
+  await deleteFile(photo.storage_path);
+  await loadData();
+  renderAreaDetail(photo.area_id);
+}
+
 /* ---------- Conduct rules (visible to all users) ---------- */
 function renderConductRules() {
   const doc = state.conductDoc;
@@ -1798,6 +1984,12 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editPet) openPetModal(state.pets.find((p) => p.id === t.dataset.editPet));
   if (t.dataset.delUnitPhoto) deleteUnitPhoto(t.dataset.delUnitPhoto);
   if (t.dataset.editType) openTypeModal(state.ticketTypes.find((x) => x.id === t.dataset.editType));
+
+  // Communal areas
+  if (t.dataset.editAreatype) openAreaTypeModal(state.areaTypes.find((x) => x.id === t.dataset.editAreatype));
+  if (t.dataset.editArea) openAreaModal(state.areas.find((x) => x.id === t.dataset.editArea));
+  if (t.dataset.openArea) renderAreaDetail(t.dataset.openArea);
+  if (t.dataset.delAreaPhoto) deleteAreaPhoto(t.dataset.delAreaPhoto);
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
