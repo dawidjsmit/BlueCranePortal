@@ -438,3 +438,21 @@ tbody tr:hover { background: #f7f9fc; }
 @media (max-width: 560px) {
   .doc-embed iframe { height: 60vh; }
 }
+
+/* ===== "Ask the rules" AI assistant ===== */
+.ask-form { display: flex; gap: 8px; margin-top: 6px; }
+.ask-form input {
+  flex: 1; padding: 11px 13px; border: 1px solid var(--line);
+  border-radius: 9px; font-size: 15px; font-family: inherit;
+}
+.ask-answer {
+  margin-top: 14px; padding: 14px 16px; border-radius: 10px;
+  background: #f0f6ff; border: 1px solid #d6e4ff; color: var(--ink);
+  white-space: pre-wrap; line-height: 1.55; font-size: 14.5px;
+}
+.ask-answer.thinking { background: #f7f9fc; border-color: var(--line); color: var(--muted); font-style: italic; }
+.ask-answer.err { background: #fef2f2; border-color: #fecaca; color: var(--open); }
+@media (max-width: 480px) {
+  .ask-form { flex-direction: column; }
+  .ask-form .btn { width: 100%; }
+}

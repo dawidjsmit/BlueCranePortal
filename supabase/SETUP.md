@@ -67,6 +67,23 @@ in the SQL Editor the same way:
   a CHECK enforcing exactly one of the two, and updates ticket visibility
   so communal-area tickets reach trustees, the logger, and the routed role.
 
+## Step 7 — "Ask the rules" AI assistant (Edge Function)
+
+The Conduct Rules screen has an AI assistant that answers residents'
+questions from the uploaded rules PDF. It needs one Edge Function.
+
+1. Add your OpenAI key as a secret (once):
+   **Edge Functions → Secrets** → add `OPENAI_API_KEY` = your `sk-...` key.
+2. **Edge Functions → Create a new function**:
+   - Name it exactly **`ask-rules`**
+   - Paste the entire contents of
+     `supabase/functions/ask-rules/index.ts`
+   - Click **Deploy**.
+3. Upload the conduct-rules PDF on the app's **Conduct rules** screen (if
+   not already done). The assistant reads whatever PDF is current.
+
+That's it — residents can now type questions on the Conduct rules screen.
+
 If each run says *Success. No rows returned*, you're good.
 
 ## Step 3 — Turn on email login (magic link + password)
