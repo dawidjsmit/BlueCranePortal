@@ -49,6 +49,7 @@ let sb = null;        // supabase client
 let me = null;        // current profile row
 let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [] };
 let recovering = false; // true while handling a password-reset link
+let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
 /* ---------- Boot ---------- */
 (async function boot() {
@@ -317,6 +318,7 @@ function navGroups() {
         { id: "layouts", label: "Layouts", ico: "📐" },
         { id: "areatypes", label: "Communal area types", ico: "🏷️" },
         { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
+        { id: "aiengagement", label: "AI engagement", ico: "✨" },
         { id: "users", label: "Users", ico: "👥" },
       ],
     });
@@ -392,6 +394,7 @@ async function loadData() {
   state.areaTypes = areaTypes.data || [];
   state.areas = areas.data || [];
   state.areaPhotos = areaPhotos.data || [];
+  aiEngagementRows = []; // force AI-engagement list to reload fresh
 }
 
 /* ---------- Storage helpers (Phase 4) ---------- */
@@ -433,6 +436,7 @@ function showView(name) {
     areatypes: renderAreaTypes,
     areas: renderAreas,
     areadetail: renderAreaDetail,
+    aiengagement: renderAiEngagement,
     users: renderPeople,
   }[name];
   if (render) render();
@@ -1439,6 +1443,68 @@ async function deleteAreaPhoto(photoId) {
   renderAreaDetail(photo.area_id);
 }
 
+/* ---------- AI engagement (trustee admin) ---------- */
+async function renderAiEngagement(filter = "") {
+  // Trustees can read all rows (RLS). Join author name from profiles.
+  if (!aiEngagementRows.length) {
+    const { data } = await sb.from("rule_questions")
+      .select("*").order("created_at", { ascending: false });
+    aiEngagementRows = data || [];
+  }
+  const f = filter.toLowerCase().trim();
+  const rows = aiEngagementRows.filter((q) => {
+    if (!f) return true;
+    const who = (askUserName(q.user_id) || "").toLowerCase();
+    return who.includes(f) || (q.question || "").toLowerCase().includes(f);
+  });
+
+  // Simple engagement summary: questions per user.
+  const counts = {};
+  aiEngagementRows.forEach((q) => { counts[q.user_id] = (counts[q.user_id] || 0) + 1; });
+  const summary = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([uid, n]) => `<span class="chip">${esc(askUserName(uid))}: ${n}</span>`).join(" ");
+
+  $("#main").innerHTML = `
+    <div class="stats-grid">
+      ${statCard(aiEngagementRows.length, "Questions asked", "")}
+      ${statCard(Object.keys(counts).length, "Users engaging", "waiting")}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>✨ AI engagement</h2>
+        <span class="hint">Every question residents asked the assistant</span></div>
+      <div class="linked-row" style="margin-bottom:12px">${summary || '<span class="muted tiny">No questions yet.</span>'}</div>
+      <div class="filters">
+        <input type="search" id="ai-filter" placeholder="Filter by person or question…" value="${esc(filter)}" />
+      </div>
+      <div id="ai-list" class="request-list"></div>
+    </div>`;
+
+  const list = $("#ai-list");
+  list.innerHTML = rows.length ? rows.map((q) => `
+    <div class="request-card" data-ai-expand="${q.id}">
+      <div class="rc-top">
+        <div>
+          <div class="rc-title">${esc(q.question)}</div>
+          <div class="rc-meta">${esc(askUserName(q.user_id))} · ${fmtDate(q.created_at)}</div>
+        </div>
+      </div>
+      <div class="ai-admin-answer" id="ai-ans-${q.id}" hidden>${esc(q.answer || "(no answer recorded)")}</div>
+    </div>`).join("") : `<div class="empty">No questions match.</div>`;
+
+  $("#ai-filter").addEventListener("input", (e) => {
+    // Re-render just the list, keeping focus/caret feel simple.
+    const val = e.target.value;
+    renderAiEngagement(val);
+    const inp = $("#ai-filter"); if (inp) { inp.focus(); inp.setSelectionRange(val.length, val.length); }
+  });
+}
+
+function askUserName(uid) {
+  const p = state.profiles.find((x) => x.id === uid);
+  return p ? (p.full_name || p.email) : "(unknown user)";
+}
+
 /* ---------- Conduct rules (visible to all users) ---------- */
 function renderConductRules() {
   const doc = state.conductDoc;
@@ -2151,6 +2217,13 @@ document.addEventListener("click", async (e) => {
   // Ask-the-Rules: select a historical question
   const histBtn = t.closest("[data-ask-select]");
   if (histBtn) { askSelectedId = histBtn.dataset.askSelect; renderAskHistory(); renderAskAnswer(); }
+
+  // AI engagement admin: expand/collapse an answer
+  const aiCard = t.closest("[data-ai-expand]");
+  if (aiCard) {
+    const ans = $("#ai-ans-" + aiCard.dataset.aiExpand);
+    if (ans) ans.hidden = !ans.hidden;
+  }
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
