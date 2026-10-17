@@ -1452,20 +1452,62 @@ function renderConductRules() {
 
   $("#main").innerHTML = `
     <div class="panel">
+      <div class="panel-head"><h2>🤖 Ask the rules</h2>
+        <span class="hint">Type a question in plain language</span></div>
+      <p class="muted tiny">e.g. “my neighbour’s cat keeps coming into my yard — what do the rules say?”</p>
+      <form id="ask-form" class="ask-form">
+        <input id="ask-input" placeholder="Ask a question about the conduct rules…" autocomplete="off" />
+        <button class="btn primary" type="submit" id="ask-send">Ask</button>
+      </form>
+      <div id="ask-answer" class="ask-answer" hidden></div>
+      <p class="muted tiny" style="margin-top:10px">⚠️ This is an automated guide to the rules, not legal advice. For anything important, confirm with a trustee.</p>
+    </div>
+
+    <div class="panel">
       <div class="panel-head">
-        <h2>📖 Conduct rules</h2>
+        <h2>📖 The rules document</h2>
         ${isTrustee()
           ? `<label class="btn primary small upload-label">${doc ? "Replace document" : "+ Upload document"}
                <input type="file" accept="application/pdf,.pdf" id="conduct-input" hidden /></label>`
           : ""}
       </div>
-      <p class="muted tiny">The complex's conduct rules. ${isTrustee() ? "Upload a PDF; every resident can read it here." : "Tap below to read them."}</p>
+      <p class="muted tiny">The complex's conduct rules. ${isTrustee() ? "Upload a PDF; every resident can read it and the assistant answers from it." : "Tap below to read them."}</p>
       <p id="conduct-msg" class="login-msg"></p>
       ${viewer}
     </div>`;
 
   const input = $("#conduct-input");
   if (input) input.addEventListener("change", onConductChosen);
+  $("#ask-form").addEventListener("submit", onAskRules);
+}
+
+async function onAskRules(e) {
+  e.preventDefault();
+  const q = $("#ask-input").value.trim();
+  if (!q) return;
+  const answerEl = $("#ask-answer");
+  const btn = $("#ask-send");
+  answerEl.hidden = false;
+  answerEl.className = "ask-answer thinking";
+  answerEl.textContent = "🤔 Reading the rules…";
+  btn.disabled = true;
+  try {
+    const { data, error } = await sb.functions.invoke("ask-rules", { body: { question: q } });
+    if (error) throw error;
+    if (data.error) {
+      answerEl.className = "ask-answer err";
+      answerEl.textContent = "⚠️ " + data.error;
+    } else {
+      answerEl.className = "ask-answer";
+      // Preserve line breaks from the answer.
+      answerEl.textContent = data.answer || "No answer returned.";
+    }
+  } catch (err) {
+    answerEl.className = "ask-answer err";
+    answerEl.textContent = "⚠️ The assistant couldn't be reached. Please try again shortly.";
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function onConductChosen(e) {
