@@ -445,13 +445,36 @@ tbody tr:hover { background: #f7f9fc; }
   flex: 1; padding: 11px 13px; border: 1px solid var(--line);
   border-radius: 9px; font-size: 15px; font-family: inherit;
 }
+
+/* Two-pane layout: history (left) + answer (right); stacks on mobile */
+.ask-layout { display: grid; grid-template-columns: 300px 1fr; gap: 18px; align-items: start; }
+.ask-history-panel, .ask-answer-panel { margin-bottom: 0; }
+.ask-history { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+.ask-hist-item {
+  text-align: left; background: #f7f9fc; border: 1px solid var(--line);
+  border-radius: 9px; padding: 10px 12px; cursor: pointer; width: 100%;
+  transition: background .15s, border-color .15s;
+}
+.ask-hist-item:hover { background: #eef2f8; }
+.ask-hist-item.active { background: #eff6ff; border-color: #c7d2fe; }
+.ask-hist-q { font-size: 13.5px; font-weight: 600; color: var(--ink);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ask-hist-time { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+.ask-answer-box { min-height: 80px; }
+.ask-shown-q { font-weight: 700; margin-bottom: 10px; color: var(--brand-ink); }
 .ask-answer {
-  margin-top: 14px; padding: 14px 16px; border-radius: 10px;
+  padding: 14px 16px; border-radius: 10px;
   background: #f0f6ff; border: 1px solid #d6e4ff; color: var(--ink);
   white-space: pre-wrap; line-height: 1.55; font-size: 14.5px;
 }
 .ask-answer.thinking { background: #f7f9fc; border-color: var(--line); color: var(--muted); font-style: italic; }
 .ask-answer.err { background: #fef2f2; border-color: #fecaca; color: var(--open); }
+
+@media (max-width: 760px) {
+  .ask-layout { grid-template-columns: 1fr; } /* stack on phone/tablet */
+  .ask-history { max-height: none; }
+}
 @media (max-width: 480px) {
   .ask-form { flex-direction: column; }
   .ask-form .btn { width: 100%; }

@@ -84,6 +84,11 @@ questions from the uploaded rules PDF. It needs one Edge Function.
 
 That's it — residents can now type questions on the Conduct rules screen.
 
+### Question history (migration 16)
+Run **`16_rule_questions.sql`** so each AI question + answer is saved:
+a user sees their own history on the "Ask the Rules" screen; trustees can
+review engagement across all users.
+
 If each run says *Success. No rows returned*, you're good.
 
 ## Step 3 — Turn on email login (magic link + password)

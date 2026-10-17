@@ -293,7 +293,10 @@ function navGroups() {
     { items: [
       { id: "dashboard", label: "Dashboard", ico: "🏠" },
       { id: "tickets", label: "Tickets", ico: "🎟️" },
-      { id: "conduct", label: "Conduct rules", ico: "📖" },
+    ]},
+    { title: "Conduct Rules", items: [
+      { id: "conduct", label: "Master Document", ico: "📖" },
+      { id: "askrules", label: "Ask the Rules", ico: "✨" },
     ]},
   ];
   if (isTrustee()) {
@@ -418,6 +421,7 @@ function showView(name) {
     dashboard: renderDashboard,
     tickets: renderTickets,
     conduct: renderConductRules,
+    askrules: renderAskRules,
     units: renderUnits,
     myunits: renderMyUnits,
     owners: renderOwnersList,
@@ -1452,62 +1456,125 @@ function renderConductRules() {
 
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🤖 Ask the rules</h2>
-        <span class="hint">Type a question in plain language</span></div>
-      <p class="muted tiny">e.g. “my neighbour’s cat keeps coming into my yard — what do the rules say?”</p>
-      <form id="ask-form" class="ask-form">
-        <input id="ask-input" placeholder="Ask a question about the conduct rules…" autocomplete="off" />
-        <button class="btn primary" type="submit" id="ask-send">Ask</button>
-      </form>
-      <div id="ask-answer" class="ask-answer" hidden></div>
-      <p class="muted tiny" style="margin-top:10px">⚠️ This is an automated guide to the rules, not legal advice. For anything important, confirm with a trustee.</p>
-    </div>
-
-    <div class="panel">
       <div class="panel-head">
-        <h2>📖 The rules document</h2>
+        <h2>📖 Master Document</h2>
         ${isTrustee()
           ? `<label class="btn primary small upload-label">${doc ? "Replace document" : "+ Upload document"}
                <input type="file" accept="application/pdf,.pdf" id="conduct-input" hidden /></label>`
           : ""}
       </div>
-      <p class="muted tiny">The complex's conduct rules. ${isTrustee() ? "Upload a PDF; every resident can read it and the assistant answers from it." : "Tap below to read them."}</p>
+      <p class="muted tiny">The complex's conduct rules. ${isTrustee() ? "Upload a PDF; every resident can read it and the “Ask the Rules” assistant answers from it." : "Tap below to read them, or use “Ask the Rules” to ask a question."}</p>
       <p id="conduct-msg" class="login-msg"></p>
       ${viewer}
     </div>`;
 
   const input = $("#conduct-input");
   if (input) input.addEventListener("change", onConductChosen);
+}
+
+/* ---------- Ask the Rules (AI, with per-user history) ---------- */
+let askHistory = [];      // this user's questions (newest first)
+let askSelectedId = null; // currently shown history item
+
+async function renderAskRules() {
+  // Load this user's history (RLS returns only their own rows for residents).
+  const { data } = await sb.from("rule_questions")
+    .select("*").eq("user_id", me.id).order("created_at", { ascending: false });
+  askHistory = data || [];
+  if (!askSelectedId && askHistory.length) askSelectedId = askHistory[0].id;
+
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>✨ Ask the Rules</h2>
+        <span class="hint">AI assistant — answers from the conduct rules</span></div>
+      <p class="muted tiny">e.g. “my neighbour’s cat keeps coming into my yard — what do the rules say?”</p>
+      <form id="ask-form" class="ask-form">
+        <input id="ask-input" placeholder="Ask a question about the conduct rules…" autocomplete="off" />
+        <button class="btn primary" type="submit" id="ask-send">Ask ✨</button>
+      </form>
+      <p class="muted tiny" style="margin-top:8px">⚠️ This is an automated guide to the rules, not legal advice. Your questions are saved so you can look back at them.</p>
+    </div>
+
+    <div class="ask-layout">
+      <div class="panel ask-history-panel">
+        <div class="panel-head"><h2>🕑 Your questions</h2></div>
+        <div id="ask-history" class="ask-history"></div>
+      </div>
+      <div class="panel ask-answer-panel">
+        <div class="panel-head"><h2>💬 Answer</h2></div>
+        <div id="ask-answer" class="ask-answer-box"></div>
+      </div>
+    </div>`;
+
   $("#ask-form").addEventListener("submit", onAskRules);
+  renderAskHistory();
+  renderAskAnswer();
+}
+
+function renderAskHistory() {
+  const el = $("#ask-history");
+  if (!el) return;
+  if (!askHistory.length) {
+    el.innerHTML = `<p class="muted tiny">No questions yet. Ask one above!</p>`;
+    return;
+  }
+  el.innerHTML = askHistory.map((q) => `
+    <button class="ask-hist-item ${q.id === askSelectedId ? "active" : ""}" data-ask-select="${q.id}">
+      <div class="ask-hist-q">${esc(q.question)}</div>
+      <div class="ask-hist-time">${fmtDate(q.created_at)}</div>
+    </button>`).join("");
+}
+
+function renderAskAnswer() {
+  const el = $("#ask-answer");
+  if (!el) return;
+  const item = askHistory.find((q) => q.id === askSelectedId);
+  if (!item) {
+    el.innerHTML = `<p class="muted tiny">Ask a question, or pick one from your history to see its answer.</p>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="ask-shown-q">${esc(item.question)}</div>
+    <div class="ask-answer ${item.answer ? "" : "thinking"}">${item.answer ? esc(item.answer) : "…"}</div>`;
 }
 
 async function onAskRules(e) {
   e.preventDefault();
   const q = $("#ask-input").value.trim();
   if (!q) return;
-  const answerEl = $("#ask-answer");
   const btn = $("#ask-send");
-  answerEl.hidden = false;
-  answerEl.className = "ask-answer thinking";
-  answerEl.textContent = "🤔 Reading the rules…";
   btn.disabled = true;
+  $("#ask-input").value = "";
+
+  // 1) Log the question immediately (answer filled in after the AI replies).
+  const { data: row, error: insErr } = await sb.from("rule_questions")
+    .insert({ user_id: me.id, question: q }).select().single();
+  if (insErr) {
+    btn.disabled = false;
+    return;
+  }
+  // Show it at the top of history right away, selected, with a "thinking" answer.
+  askHistory.unshift(row);
+  askSelectedId = row.id;
+  renderAskHistory();
+  $("#ask-answer").innerHTML =
+    `<div class="ask-shown-q">${esc(q)}</div><div class="ask-answer thinking">🤔 Reading the rules…</div>`;
+
+  // 2) Call the AI.
+  let answer = "";
   try {
     const { data, error } = await sb.functions.invoke("ask-rules", { body: { question: q } });
     if (error) throw error;
-    if (data.error) {
-      answerEl.className = "ask-answer err";
-      answerEl.textContent = "⚠️ " + data.error;
-    } else {
-      answerEl.className = "ask-answer";
-      // Preserve line breaks from the answer.
-      answerEl.textContent = data.answer || "No answer returned.";
-    }
+    answer = data.error ? "⚠️ " + data.error : (data.answer || "No answer returned.");
   } catch (err) {
-    answerEl.className = "ask-answer err";
-    answerEl.textContent = "⚠️ The assistant couldn't be reached. Please try again shortly.";
-  } finally {
-    btn.disabled = false;
+    answer = "⚠️ The assistant couldn't be reached. Please try again shortly.";
   }
+
+  // 3) Save the answer + update the view.
+  await sb.from("rule_questions").update({ answer }).eq("id", row.id);
+  row.answer = answer;
+  renderAskAnswer();
+  btn.disabled = false;
 }
 
 async function onConductChosen(e) {
@@ -2080,6 +2147,10 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editArea) openAreaModal(state.areas.find((x) => x.id === t.dataset.editArea));
   if (t.dataset.openArea) renderAreaDetail(t.dataset.openArea);
   if (t.dataset.delAreaPhoto) deleteAreaPhoto(t.dataset.delAreaPhoto);
+
+  // Ask-the-Rules: select a historical question
+  const histBtn = t.closest("[data-ask-select]");
+  if (histBtn) { askSelectedId = histBtn.dataset.askSelect; renderAskHistory(); renderAskAnswer(); }
 });
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
