@@ -37,6 +37,21 @@ const RELATION_LABEL = {
 };
 const PET_TYPE_LABEL = { dog: "Dog", cat: "Cat", other: "Other" };
 
+// Disclaimers for the "Ask the Rules" assistant.
+const ASK_DISCLAIMER_TOP =
+  "This assistant is an automated guide to the conduct rules — it is not legal " +
+  "advice. Asking a question here is NOT a formal interaction with the managing " +
+  "agent, the trustees, or anyone else, and it does not grant permission or " +
+  "resolve anything. For any approval or action, please still follow the proper " +
+  "channels (log a ticket or contact the trustees). Your questions and answers " +
+  "are saved so you can refer back to them, and they give the trustees insight " +
+  "into how residents are using the assistant.";
+const ASK_DISCLAIMER_BELOW =
+  "Reminder: this answer is an automated guide to the rules only. It is not legal " +
+  "advice, not a decision, and not permission. No formal request has been lodged " +
+  "by asking this — to obtain approval or have something actioned, please follow " +
+  "the proper channels (log a ticket or contact the trustees / managing agent).";
+
 // Ticket statuses + labels
 const TICKET_STATUS_LABEL = {
   create: "Create", sent: "Sent", busy: "Busy", waiting: "Waiting",
@@ -1558,7 +1573,7 @@ async function renderAskRules() {
         <input id="ask-input" placeholder="Ask a question about the conduct rules…" autocomplete="off" />
         <button class="btn primary" type="submit" id="ask-send">Ask ✨</button>
       </form>
-      <p class="muted tiny" style="margin-top:8px">⚠️ This is an automated guide to the rules, not legal advice. Your questions are saved so you can look back at them.</p>
+      <p class="ask-disclaimer">⚠️ ${esc(ASK_DISCLAIMER_TOP)}</p>
     </div>
 
     <div class="ask-layout">
@@ -1599,9 +1614,35 @@ function renderAskAnswer() {
     el.innerHTML = `<p class="muted tiny">Ask a question, or pick one from your history to see its answer.</p>`;
     return;
   }
+  const hasAnswer = !!item.answer;
   el.innerHTML = `
     <div class="ask-shown-q">${esc(item.question)}</div>
-    <div class="ask-answer ${item.answer ? "" : "thinking"}">${item.answer ? esc(item.answer) : "…"}</div>`;
+    <div class="ask-answer ${hasAnswer ? "" : "thinking"}">${hasAnswer ? esc(item.answer) : "…"}</div>
+    ${hasAnswer ? `
+      <p class="ask-disclaimer below">${esc(ASK_DISCLAIMER_BELOW)}</p>
+      <div class="ask-share">
+        <span class="muted tiny">Send this to yourself:</span>
+        <button class="btn ghost small" data-share-wa="${item.id}">📲 WhatsApp</button>
+        <button class="btn ghost small" data-share-email="${item.id}">✉️ Email</button>
+      </div>` : ""}`;
+}
+
+// Build the shareable text (question + answer + disclaimer).
+function shareTextFor(item) {
+  return `Blue Crane Vistas — Conduct Rules assistant\n\n` +
+    `Question:\n${item.question}\n\n` +
+    `Answer:\n${item.answer}\n\n` +
+    `— ${ASK_DISCLAIMER_BELOW}`;
+}
+function shareViaWhatsApp(item) {
+  const url = "https://wa.me/?text=" + encodeURIComponent(shareTextFor(item));
+  window.open(url, "_blank", "noopener");
+}
+function shareViaEmail(item) {
+  const subject = "Blue Crane Vistas — Conduct Rules answer";
+  const url = "mailto:?subject=" + encodeURIComponent(subject) +
+    "&body=" + encodeURIComponent(shareTextFor(item));
+  window.location.href = url;
 }
 
 async function onAskRules(e) {
@@ -2217,6 +2258,16 @@ document.addEventListener("click", async (e) => {
   // Ask-the-Rules: select a historical question
   const histBtn = t.closest("[data-ask-select]");
   if (histBtn) { askSelectedId = histBtn.dataset.askSelect; renderAskHistory(); renderAskAnswer(); }
+
+  // Ask-the-Rules: share buttons
+  if (t.dataset.shareWa) {
+    const item = askHistory.find((q) => q.id === t.dataset.shareWa);
+    if (item) shareViaWhatsApp(item);
+  }
+  if (t.dataset.shareEmail) {
+    const item = askHistory.find((q) => q.id === t.dataset.shareEmail);
+    if (item) shareViaEmail(item);
+  }
 
   // AI engagement admin: expand/collapse an answer
   const aiCard = t.closest("[data-ai-expand]");

@@ -61,13 +61,37 @@ Deno.serve(async (req) => {
     const base64 = base64Encode(bytes);
 
     // 3) Ask OpenAI, giving it the PDF + the question.
-    const system =
-      "You are a helpful assistant for residents of the Blue Crane Vistas " +
-      "residential complex. Answer ONLY using the attached conduct-rules " +
-      "document. Explain in plain, friendly language and, where possible, " +
-      "point to the relevant rule or section. If the rules do not cover the " +
-      "question, say so honestly and suggest the resident log a ticket or " +
-      "contact a trustee. Do NOT give legal advice or guarantee outcomes.";
+    const system = [
+      "You are a knowledgeable, friendly assistant for residents of the",
+      "Blue Crane Vistas residential complex (a South African sectional-title",
+      "scheme). You answer questions using the attached conduct-rules PDF.",
+      "",
+      "GOAL: give a genuinely helpful, thorough answer — not a one-liner.",
+      "Think it through and explain it well, the way a patient, well-informed",
+      "person would. Specifically:",
+      "• Start with a clear, direct answer to what they asked.",
+      "• Then explain the relevant rule(s) in plain language, quoting or",
+      "  paraphrasing the wording and citing the rule number/section where",
+      "  you can.",
+      "• Consider the question from more than one angle (e.g. what IS allowed",
+      "  vs what is NOT, any conditions, approvals, or exceptions that apply).",
+      "• Where useful, restate the key point in simpler, alternative words so",
+      "  it's easy to understand.",
+      "• Mention any practical next steps (e.g. 'you would need written",
+      "  trustee approval first', or 'log a maintenance ticket').",
+      "• Use short paragraphs and, where it helps, bullet points or clear",
+      "  headings so it's easy to read.",
+      "",
+      "IMPORTANT BOUNDARIES:",
+      "• Base your answer on the conduct-rules document. If something isn't",
+      "  covered, say so honestly rather than guessing, and suggest they",
+      "  confirm with the trustees / managing agent or log a ticket.",
+      "• Do NOT give legal advice, and do NOT grant permission or promise an",
+      "  outcome — you are explaining the rules, not making decisions. Make",
+      "  clear that formal approvals still have to go through the proper",
+      "  channels (trustees / managing agent).",
+      "• Be warm and respectful.",
+    ].join("\n");
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -77,12 +101,20 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
+        temperature: 0.4,
+        max_tokens: 1200, // give answers room to be detailed
         messages: [
           { role: "system", content: system },
           {
             role: "user",
             content: [
-              { type: "text", text: question },
+              {
+                type: "text",
+                text:
+                  "Resident's question: " + question +
+                  "\n\nPlease give a thorough, well-explained answer based on " +
+                  "the attached conduct rules, following your guidance above.",
+              },
               {
                 type: "file",
                 file: {
