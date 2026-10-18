@@ -298,8 +298,8 @@ const showInactive = () => isTrustee();
 
 function defaultView() {
   if (isTrustee()) return "dashboard";
-  // Gardeners / service providers care about jobs, not units -> land on Tickets.
-  if (isAssignee()) return "tickets";
+  // Gardeners / service providers care about jobs assigned to their role.
+  if (isAssignee()) return "ticket-feedback";
   return myUnitIds().size ? "myunits" : "dashboard";
 }
 
@@ -308,7 +308,13 @@ function navGroups() {
   const groups = [
     { items: [
       { id: "dashboard", label: "Dashboard", ico: "🏠" },
-      { id: "tickets", label: "Tickets", ico: "🎟️" },
+    ]},
+    { title: "Tickets", items: [
+      ...(canCreateTicket() ? [{ id: "ticket-create", label: "Create a Ticket", ico: "➕" }] : []),
+      { id: "ticket-mine", label: "My Tickets", ico: "🎟️" },
+      ...(isResident() ? [{ id: "ticket-unit", label: "My Unit's Tickets", ico: "🏢" }] : []),
+      { id: "ticket-feedback", label: "Needs my Feedback", ico: "⏳" },
+      ...(isTrustee() ? [{ id: "ticket-all", label: "All Tickets", ico: "📋" }] : []),
     ]},
     { title: "Conduct Rules", items: [
       { id: "conduct", label: "Master Document", ico: "📖" },
@@ -437,7 +443,11 @@ function showView(name) {
   document.body.classList.remove("nav-open"); // close mobile drawer on navigate
   const render = {
     dashboard: renderDashboard,
-    tickets: renderTickets,
+    "ticket-create": renderTicketCreate,
+    "ticket-mine": renderMyTickets,
+    "ticket-unit": renderUnitTickets,
+    "ticket-feedback": renderNeedsFeedback,
+    "ticket-all": renderAllTickets,
     conduct: renderConductRules,
     askrules: renderAskRules,
     units: renderUnits,
@@ -501,33 +511,114 @@ function renderDashboard() {
         ${mine.length ? mine.map(ticketCard).join("")
           : `<div class="empty">🎉 Nothing waiting on you right now.</div>`}
       </div>
+      ${mine.length ? `<div style="margin-top:12px"><button class="link-btn" data-view="ticket-feedback">View all →</button></div>` : ""}
     </div>`;
 }
 
-function renderTickets() {
-  // Build filtered groups.
-  const all = state.tickets.slice();
-  const mine = all.filter(needsMyAction);
-  const drafts = all.filter((t) => t.status === "create" && t.logged_by === me.id);
-  const others = all.filter((t) => !mine.includes(t) && !drafts.includes(t));
+// Shared helper: a titled panel listing ticket cards.
+function ticketListPanel(title, list, hint, emptyMsg) {
+  return `<div class="panel">
+    <div class="panel-head"><h2>${title}</h2>${hint ? `<span class="hint">${hint}</span>` : ""}</div>
+    <div class="request-list">
+      ${list.length ? list.map(ticketCard).join("") : `<div class="empty">${emptyMsg || "None."}</div>`}
+    </div>
+  </div>`;
+}
 
-  const section = (title, list, hint) => `
+// "Create a Ticket" — open the form directly (and show a hint behind it).
+function renderTicketCreate() {
+  $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>${title}</h2>${hint ? `<span class="hint">${hint}</span>` : ""}</div>
-      <div class="request-list">
-        ${list.length ? list.map(ticketCard).join("") : `<div class="empty">None.</div>`}
-      </div>
+      <div class="panel-head"><h2>➕ Create a Ticket</h2></div>
+      <p class="muted">Log a new ticket about your unit or a communal area.</p>
+      <button class="btn primary" data-new-ticket>+ Log a ticket</button>
     </div>`;
+  openTicketModal(null);
+}
+
+// "My Tickets" — tickets I literally created (drafts first).
+function renderMyTickets() {
+  const mine = state.tickets
+    .filter((t) => t.logged_by === me.id)
+    .sort((a, b) => (a.status === "create" ? -1 : 0) - (b.status === "create" ? -1 : 0));
+  const drafts = mine.filter((t) => t.status === "create");
+  const sent = mine.filter((t) => t.status !== "create");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🎟️ My Tickets</h2>
+        ${canCreateTicket() ? `<button class="btn primary small" data-new-ticket>+ Log a ticket</button>` : ""}
+      </div>
+      <p class="muted tiny">Tickets you created.</p>
+    </div>
+    ${drafts.length ? ticketListPanel("📝 Drafts (not yet sent)", drafts) : ""}
+    ${ticketListPanel("Submitted", sent, "", "You haven't submitted any tickets yet.")}`;
+}
+
+// "My Unit's Tickets" — tickets on a chosen unit I'm linked to.
+let unitTicketsSelectedUnit = null;
+function renderUnitTickets() {
+  const ids = [...myUnitIds()];
+  const myUnits = state.units.filter((u) => ids.has(u.id))
+    .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+  if (!myUnits.length) {
+    $("#main").innerHTML = `<div class="panel"><div class="panel-head"><h2>🏢 My Unit's Tickets</h2></div>
+      <div class="empty">No units are linked to you yet.</div></div>`;
+    return;
+  }
+  if (!unitTicketsSelectedUnit || !ids.has(unitTicketsSelectedUnit)) {
+    unitTicketsSelectedUnit = myUnits[0].id;
+  }
+  const list = state.tickets
+    .filter((t) => t.unit_id === unitTicketsSelectedUnit)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const picker = myUnits.length > 1
+    ? `<select id="unit-ticket-picker">
+        ${myUnits.map((u) => `<option value="${u.id}" ${u.id === unitTicketsSelectedUnit ? "selected" : ""}>Unit ${esc(u.number)}</option>`).join("")}
+      </select>`
+    : `<span class="chip">Unit ${esc(myUnits[0].number)}</span>`;
 
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🎟️ Tickets</h2>
-        ${canCreateTicket() ? `<button class="btn primary" data-new-ticket>+ Log a ticket</button>` : ""}
-      </div>
+      <div class="panel-head"><h2>🏢 My Unit's Tickets</h2>${picker}</div>
+      <p class="muted tiny">All tickets logged by anyone on this unit.</p>
     </div>
-    ${drafts.length ? section("📝 My drafts (not yet sent)", drafts) : ""}
-    ${section("⏳ Needs my feedback", mine, "Tickets currently assigned to a role you hold")}
-    ${section(isTrustee() ? "📋 All other tickets" : "📋 Other tickets on my unit(s)", others)}`;
+    ${ticketListPanel("Tickets", list, "", "No tickets for this unit yet.")}`;
+
+  const sel = $("#unit-ticket-picker");
+  if (sel) sel.addEventListener("change", (e) => { unitTicketsSelectedUnit = e.target.value; renderUnitTickets(); });
+}
+
+// "Needs my Feedback" — tickets assigned to a role I hold.
+function renderNeedsFeedback() {
+  const mine = state.tickets.filter(needsMyAction)
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>⏳ Needs my Feedback</h2>
+        <span class="hint">Tickets currently assigned to a role you hold</span></div>
+    </div>
+    ${ticketListPanel("Awaiting your feedback", mine, "", "🎉 Nothing waiting on you right now.")}`;
+}
+
+// "All Tickets" — trustee complex-wide view, with a status filter.
+let allTicketsStatus = "";
+function renderAllTickets() {
+  let list = state.tickets.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  if (allTicketsStatus) list = list.filter((t) => t.status === allTicketsStatus);
+  const statusOpts = ["", "create", "sent", "busy", "waiting", "complete", "cancelled", "parked"]
+    .map((s) => `<option value="${s}" ${s === allTicketsStatus ? "selected" : ""}>${s ? TICKET_STATUS_LABEL[s] : "All statuses"}</option>`).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>📋 All Tickets</h2>
+        <button class="btn primary small" data-new-ticket>+ Log a ticket</button></div>
+      <div class="filters"><label>Status <select id="all-ticket-status">${statusOpts}</select></label></div>
+      <div class="request-list">
+        ${list.length ? list.map(ticketCard).join("") : `<div class="empty">No tickets match.</div>`}
+      </div>
+    </div>`;
+  const sel = $("#all-ticket-status");
+  if (sel) sel.addEventListener("change", (e) => { allTicketsStatus = e.target.value; renderAllTickets(); });
 }
 
 function renderUnits() {
