@@ -1621,8 +1621,8 @@ function renderAskAnswer() {
     ${hasAnswer ? `
       <p class="ask-disclaimer below">${esc(ASK_DISCLAIMER_BELOW)}</p>
       <div class="ask-share">
-        <span class="muted tiny">Send this to yourself:</span>
-        <button class="btn ghost small" data-share-wa="${item.id}">📲 WhatsApp</button>
+        <span class="muted tiny">Keep this:</span>
+        <button class="btn ghost small" data-share-copy="${item.id}">📋 Copy</button>
         <button class="btn ghost small" data-share-email="${item.id}">✉️ Email</button>
       </div>` : ""}`;
 }
@@ -1634,9 +1634,24 @@ function shareTextFor(item) {
     `Answer:\n${item.answer}\n\n` +
     `— ${ASK_DISCLAIMER_BELOW}`;
 }
-function shareViaWhatsApp(item) {
-  const url = "https://wa.me/?text=" + encodeURIComponent(shareTextFor(item));
-  window.open(url, "_blank", "noopener");
+async function copyShare(item, btn) {
+  const text = shareTextFor(item);
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Fallback for older/locked-down browsers.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(ta);
+  }
+  if (btn) {
+    const original = btn.textContent;
+    btn.textContent = "✓ Copied!";
+    setTimeout(() => { btn.textContent = original; }, 1600);
+  }
 }
 function shareViaEmail(item) {
   const subject = "Blue Crane Vistas — Conduct Rules answer";
@@ -2260,9 +2275,9 @@ document.addEventListener("click", async (e) => {
   if (histBtn) { askSelectedId = histBtn.dataset.askSelect; renderAskHistory(); renderAskAnswer(); }
 
   // Ask-the-Rules: share buttons
-  if (t.dataset.shareWa) {
-    const item = askHistory.find((q) => q.id === t.dataset.shareWa);
-    if (item) shareViaWhatsApp(item);
+  if (t.dataset.shareCopy) {
+    const item = askHistory.find((q) => q.id === t.dataset.shareCopy);
+    if (item) copyShare(item, t);
   }
   if (t.dataset.shareEmail) {
     const item = askHistory.find((q) => q.id === t.dataset.shareEmail);
