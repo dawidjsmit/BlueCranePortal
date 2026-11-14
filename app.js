@@ -1838,8 +1838,35 @@ $("#areatype-form").addEventListener("submit", async (e) => {
 });
 
 /* ---------- Communal entities (trustee) ---------- */
+// Filter for the Communal entities list ("" = all, "none" = no type, else a type id).
+// Kept between visits so it survives adding/editing an entity.
+let areaTypeFilter = "";
+
+// Entities matching the chosen type filter.
+function filterAreasByType(areas, filter) {
+  if (!filter) return areas;
+  if (filter === "none") return areas.filter((a) => !a.type_id);
+  return areas.filter((a) => a.type_id === filter);
+}
+
+// Dropdown options: every active type, plus any hidden type still in use,
+// each with how many entities it has.
+function areaTypeFilterOptions(areas, types) {
+  const count = (id) => areas.filter((a) => a.type_id === id).length;
+  const opts = [{ value: "", label: `All types (${areas.length})` }];
+  types.filter((t) => t.active || count(t.id) > 0)
+    .forEach((t) => opts.push({ value: t.id, label: `${t.name} (${count(t.id)})` }));
+  const untyped = areas.filter((a) => !a.type_id).length;
+  if (untyped) opts.push({ value: "none", label: `No type (${untyped})` });
+  return opts;
+}
+
 function renderAreas() {
-  const rows = state.areas.map((a) => {
+  const opts = areaTypeFilterOptions(state.areas, state.areaTypes);
+  if (!opts.some((o) => o.value === areaTypeFilter)) areaTypeFilter = "";  // type removed
+  const shown = filterAreasByType(state.areas, areaTypeFilter);
+
+  const rows = shown.map((a) => {
     const photos = state.areaPhotos.filter((p) => p.area_id === a.id).length;
     return `<tr>
       <td><strong>${esc(a.code)}</strong></td>
@@ -1850,15 +1877,32 @@ function renderAreas() {
         <button class="btn ghost small" data-open-area="${a.id}">Open</button></td>
     </tr>`;
   }).join("");
+
+  const empty = state.areas.length
+    ? "No communal entities of this type."
+    : "No communal entities yet.";
+
   $("#main").innerHTML = `
     <div class="panel">
       <div class="panel-head"><h2>🌳 Communal entities</h2>
         <button class="btn primary small" id="add-area-btn">+ Add entity</button></div>
+      <div class="filters">
+        <label>Type
+          <select id="area-type-filter">
+            ${opts.map((o) => `<option value="${o.value}" ${o.value === areaTypeFilter ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+          </select>
+        </label>
+        ${areaTypeFilter ? `<span class="muted tiny">Showing ${shown.length} of ${state.areas.length}</span>` : ""}
+      </div>
       <div class="table-wrap"><table><thead><tr>
         <th>Code</th><th>Name</th><th>Type</th><th>Photos</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No communal entities yet.</td></tr>`}</tbody></table></div>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">${empty}</td></tr>`}</tbody></table></div>
     </div>`;
   $("#add-area-btn").addEventListener("click", () => openAreaModal(null));
+  $("#area-type-filter").addEventListener("change", (e) => {
+    areaTypeFilter = e.target.value;
+    renderAreas();
+  });
 }
 
 function openAreaModal(area) {
