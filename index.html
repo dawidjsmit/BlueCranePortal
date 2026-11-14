@@ -207,6 +207,7 @@
   <div class="modal-overlay" id="reg-modal">
     <div class="modal">
       <h3 id="reg-modal-title">Add</h3>
+      <p class="user-line" id="reg-modal-title-user"></p>
       <form id="reg-form" novalidate>
         <div id="reg-fields"></div>
         <p id="reg-msg" class="login-msg"></p>
@@ -282,6 +283,7 @@
   <div class="modal-overlay" id="owner-modal">
     <div class="modal">
       <h3 id="owner-modal-title">Add owner</h3>
+      <p class="user-line" id="owner-modal-title-user"></p>
       <form id="owner-form">
         <input type="hidden" id="owner-id" />
         <div class="row">
@@ -308,6 +310,7 @@
   <div class="modal-overlay" id="tenant-modal">
     <div class="modal">
       <h3 id="tenant-modal-title">Add tenant</h3>
+      <p class="user-line" id="tenant-modal-title-user"></p>
       <form id="tenant-form">
         <input type="hidden" id="tenant-id" />
         <div class="row">
@@ -348,6 +351,7 @@
   <div class="modal-overlay" id="occupant-modal">
     <div class="modal">
       <h3 id="occupant-modal-title">Add occupant</h3>
+      <p class="user-line" id="occupant-modal-title-user"></p>
       <form id="occupant-form">
         <input type="hidden" id="occupant-id" />
         <div class="row">
@@ -429,26 +433,23 @@
     </div>
   </div>
 
-  <!-- Link person to unit modal (replaces the old browser prompt boxes) -->
-  <div class="modal-overlay" id="link-modal">
+  <!-- Link a user to their registry record (role + record) -->
+  <div class="modal-overlay" id="userlink-modal">
     <div class="modal">
-      <h3>Link person to a unit</h3>
-      <p class="muted tiny" id="link-person-label" style="margin-top:-6px"></p>
-      <form id="link-form">
-        <input type="hidden" id="link-profile-id" />
-        <label>Unit
-          <select id="link-unit" required></select>
-        </label>
-        <label>Relationship
-          <select id="link-relation">
-            <option value="owner">Owner</option>
-            <option value="tenant">Tenant</option>
-          </select>
-        </label>
-        <p id="link-msg" class="login-msg"></p>
+      <h3>Link user to a registry record</h3>
+      <p class="muted tiny" id="userlink-who" style="margin-top:-6px"></p>
+      <form id="userlink-form">
+        <label>Role <select id="userlink-role"></select></label>
+        <label>Registry record <select id="userlink-record"></select></label>
+        <div id="userlink-none" class="userlink-none" hidden>
+          <span id="userlink-none-text"></span>
+          <button type="button" class="link-btn" id="userlink-goto" data-view="">Go to that registry →</button>
+        </div>
+        <p class="muted tiny">Linking also approves the user. Their units come from the record.</p>
+        <p id="userlink-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
-          <button type="submit" class="btn primary">Link to unit</button>
+          <button type="submit" class="btn primary">Save</button>
         </div>
       </form>
     </div>

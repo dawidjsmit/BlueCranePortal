@@ -750,21 +750,30 @@ function contactLine(p) {
   return bits.join(" · ") || '<span class="muted">no contact</span>';
 }
 
-// Read-only: login users linked to a unit (via unit_members).
+// Read-only: login users linked to this unit through their registry record.
 function unitUsersTable(unitId) {
-  const links = state.members.filter((m) => m.unit_id === unitId);
-  if (!links.length) return `<div class="empty">No login users linked to this unit.</div>`;
+  const rows = [];
+  state.unitOwners.filter((l) => l.unit_id === unitId && l.active).forEach((l) => {
+    const o = state.owners.find((x) => x.id === l.owner_id);
+    if (o && o.profile_id) rows.push({ pid: o.profile_id, as: "owner", rec: o });
+  });
+  state.tenants.filter((t) => t.unit_id === unitId && t.active && t.profile_id)
+    .forEach((t) => rows.push({ pid: t.profile_id, as: "tenant", rec: t }));
+  state.occupants.filter((o) => o.unit_id === unitId && o.active && o.profile_id)
+    .forEach((o) => rows.push({ pid: o.profile_id, as: "occupant", rec: o }));
+  (state.registry.trustees || []).filter((t) => t.unit_id === unitId && t.profile_id)
+    .forEach((t) => rows.push({ pid: t.profile_id, as: "trustee", rec: t }));
+  if (!rows.length) return `<div class="empty">No login users linked to this unit.</div>`;
   return `<div class="table-wrap"><table><thead><tr>
       <th>User</th><th>Account role</th><th>Linked as</th>
     </tr></thead><tbody>
-    ${links.map((m) => {
-      const p = state.profiles.find((x) => x.id === m.profile_id);
-      const name = p ? (p.full_name || p.email) : "(unknown user)";
-      const role = p ? (ROLE_LABEL[p.role] || p.role) : "—";
+    ${rows.map(({ pid, as, rec }) => {
+      const p = state.profiles.find((x) => x.id === pid);
+      const name = p ? (p.full_name || p.email) : fullName(rec);
       return `<tr>
         <td><strong>${esc(name)}</strong>${p && p.full_name ? `<div class="muted tiny">${esc(p.email)}</div>` : ""}</td>
-        <td><span class="role-chip ${p ? p.role : ""}">${esc(role)}</span></td>
-        <td>${esc(ROLE_LABEL[m.relation] || m.relation)}</td>
+        <td>${p ? `<span class="role-chip ${p.role}">${esc(ROLE_LABEL[p.role] || p.role)}</span>` : "—"}</td>
+        <td>${esc(ROLE_LABEL[as])}</td>
       </tr>`;
     }).join("")}
   </tbody></table></div>`;
@@ -924,7 +933,7 @@ function occupantTable(unitId) {
       <th>Name</th><th>Role / relationship</th><th>Source</th><th>Status</th>${canEdit ? "<th></th>" : ""}
     </tr></thead><tbody>
     ${sorted.map((p) => `<tr class="${p.active ? "" : "inactive-row"}">
-      <td><strong>${esc(p.name)}</strong></td>
+      <td><strong>${esc(p.name)}</strong> ${p.record ? userBadge(p.record) : ""}</td>
       <td>${esc(p.detail)}</td>
       <td>${p.auto ? '<span class="muted tiny">auto (from ' + p.kind + ')</span>' : '<span class="chip">added</span>'}</td>
       <td>${p.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Inactive</span>'}</td>
@@ -971,7 +980,7 @@ function personTable(people, kind, canEdit = true) {
       <th>Occupant</th><th>Status</th>${canEdit ? "<th></th>" : ""}
     </tr></thead><tbody>
     ${sorted.map((p) => `<tr class="${p.active ? "" : "inactive-row"}">
-      <td><strong>${esc(fullName(p))}</strong></td>
+      <td><strong>${esc(fullName(p))}</strong> ${userBadge(p)}</td>
       <td>${contactLine(p)}</td>
       <td>${fmtDay(kind === "tenant" ? p.tenant_since : p.owner_since)}</td>
       ${kind === "tenant" ? `<td>${p.lease_with === "agency" ? "Agency: " + esc(p.agency_name || "—") : "Direct with owner"}</td>` : ""}
@@ -1010,6 +1019,8 @@ function openOwnerModal(owner, unitCtx) {
   const trustee = isTrustee();
   ownerCtx = { unitCtx: unitCtx || null };
   $("#owner-modal-title").textContent = owner ? "Edit owner" : "Add owner";
+  $("#owner-modal-title-user").innerHTML = owner && owner.profile_id
+    ? `🔐 Also a user${userForRecord(owner).email ? ": " + esc(userForRecord(owner).email) : ""}` : "";
   $("#owner-id").value = owner?.id || "";
   $("#owner-first").value = owner?.first_name || "";
   $("#owner-last").value = owner?.last_name || "";
@@ -1115,6 +1126,8 @@ $("#linkowner-form").addEventListener("submit", async (e) => {
 /* ----- Tenant modal ----- */
 function openTenantModal(tenant) {
   $("#tenant-modal-title").textContent = tenant ? "Edit tenant" : "Add tenant";
+  $("#tenant-modal-title-user").innerHTML = tenant && tenant.profile_id
+    ? `🔐 Also a user${userForRecord(tenant).email ? ": " + esc(userForRecord(tenant).email) : ""}` : "";
   $("#tenant-id").value = tenant?.id || "";
   $("#tenant-first").value = tenant?.first_name || "";
   $("#tenant-last").value = tenant?.last_name || "";
@@ -1166,6 +1179,8 @@ $("#tenant-form").addEventListener("submit", async (e) => {
 /* ----- Occupant modal ----- */
 function openOccupantModal(occupant) {
   $("#occupant-modal-title").textContent = occupant ? "Edit occupant" : "Add occupant";
+  $("#occupant-modal-title-user").innerHTML = occupant && occupant.profile_id
+    ? `🔐 Also a user${userForRecord(occupant).email ? ": " + esc(userForRecord(occupant).email) : ""}` : "";
   $("#occupant-id").value = occupant?.id || "";
   $("#occupant-first").value = occupant?.first_name || "";
   $("#occupant-last").value = occupant?.last_name || "";
@@ -1416,7 +1431,7 @@ function renderOwnersList() {
             : `<span class="chip chip-dim" title="No longer an owner of this unit">${esc(unitNum(l.unit_id))}</span>`).join(" ")
         : '<span class="muted tiny">no units</span>';
       return `<tr class="${isActive(o) ? "" : "inactive-row"}">
-        <td><strong>${esc(fullName(o))}</strong></td>
+        <td><strong>${esc(fullName(o))}</strong> ${userBadge(o)}</td>
         <td>${chips}</td>
         <td>${contactLine(o)}</td>
         <td>${isActive(o) ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Former</span>'}</td>
@@ -1438,7 +1453,7 @@ function renderTenantsList() {
   const rows = state.tenants.slice()
     .sort((a, b) => (b.active - a.active) || fullName(a).localeCompare(fullName(b)))
     .map((t) => `<tr class="${t.active ? "" : "inactive-row"}">
-      <td><strong>${esc(fullName(t))}</strong></td>
+      <td><strong>${esc(fullName(t))}</strong> ${userBadge(t)}</td>
       <td>${unitLinkChip(t.unit_id)}</td>
       <td>${contactLine(t)}</td>
       <td>${fmtDay(t.tenant_since)}</td>
@@ -1455,7 +1470,7 @@ function renderOccupantsList() {
   const rows = state.occupants.slice()
     .sort((a, b) => (b.active - a.active) || fullName(a).localeCompare(fullName(b)))
     .map((oc) => `<tr class="${oc.active ? "" : "inactive-row"}">
-      <td><strong>${esc(fullName(oc))}</strong></td>
+      <td><strong>${esc(fullName(oc))}</strong> ${userBadge(oc)}</td>
       <td>${unitLinkChip(oc.unit_id)}</td>
       <td>${esc(RELATION_LABEL[oc.relationship] || "Occupant")}</td>
       <td>${contactLine(oc)}</td>
@@ -1481,15 +1496,6 @@ function renderPetsList() {
 }
 
 // Units a given user (profile) is linked to, as chips.
-function unitsForUser(profileId) {
-  const links = state.members.filter((m) => m.profile_id === profileId);
-  if (!links.length) return `<span class="muted tiny">—</span>`;
-  return links.map((m) => {
-    const u = state.units.find((x) => x.id === m.unit_id);
-    return u ? `<span class="chip">${esc(u.number)}</span>` : "";
-  }).join(" ");
-}
-
 function renderTicketTypes() {
   const rows = state.ticketTypes.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
     <td><strong>${esc(tt.name)}</strong></td>
@@ -1627,7 +1633,7 @@ function renderRegistry(key) {
     (regIsCurrent(b) - regIsCurrent(a)) || cfg.displayName(a).localeCompare(cfg.displayName(b)));
   const head = [...cfg.columns.map((c) => c[0]), "Service start", "Status", ""];
   const body = rows.map((r) => `<tr class="${regIsCurrent(r) ? "" : "inactive-row"}">
-      ${cfg.columns.map((c) => `<td>${c[1](r)}</td>`).join("")}
+      ${cfg.columns.map((c, i) => `<td>${c[1](r)}${i === 0 ? " " + userBadge(r) : ""}</td>`).join("")}
       <td>${fmtDay(r.service_start)}</td>
       <td>${regStatusPill(r)}</td>
       <td style="text-align:right"><button class="btn ghost small" data-reg-edit="${key}" data-id="${r.id}">Edit</button></td>
@@ -1684,6 +1690,8 @@ function openRegModal(key, id) {
   const rec = id ? (state.registry[key] || []).find((r) => r.id === id) : null;
   regCtx = { key, id: rec ? rec.id : null };
   $("#reg-modal-title").textContent = (rec ? "Edit " : "Add ") + cfg.noun;
+  $("#reg-modal-title-user").innerHTML = rec && rec.profile_id
+    ? `🔐 Also a user${userForRecord(rec).email ? ": " + esc(userForRecord(rec).email) : ""}` : "";
   $("#reg-fields").innerHTML = cfg.fields.map((f) => regFieldHtml(f, rec)).join("");
   applyRegVisibility();
   $("#reg-msg").textContent = "";
@@ -2169,30 +2177,155 @@ async function onConductChosen(e) {
 }
 
 function renderPeople() {
-  const rows = state.profiles.map((p) => `
-    <tr>
+  const people = state.profiles.slice().sort((a, b) =>
+    (a.status === "approved") - (b.status === "approved")
+    || String(a.full_name || a.email).localeCompare(String(b.full_name || b.email)));
+  const rows = people.map((p) => {
+    const rec = recordForUser(p);
+    const reg = ROLE_REGISTRY[p.role];
+    const recCell = rec
+      ? `<strong>${esc(recordLabel(p.role, rec))}</strong><div class="muted tiny">${esc(reg.noun)}</div>`
+      : `<span class="pill rejected">Needs a ${esc(reg ? reg.noun : "registry")} record</span>`;
+    const units = unitsFromRecord(p);
+    const unitCell = units.length
+      ? units.map((id) => unitLinkChip(id)).join(" ")
+      : `<span class="muted tiny">${["gardener", "service_provider"].includes(p.role) ? "not unit-linked" : "—"}</span>`;
+    return `<tr>
       <td>${esc(p.full_name || "—")}<div class="muted tiny">${esc(p.email)}</div></td>
-      <td>
-        <select data-role-for="${p.id}">
-          ${Object.keys(ROLE_LABEL).map((r) => `<option value="${r}" ${p.role === r ? "selected" : ""}>${ROLE_LABEL[r]}</option>`).join("")}
-        </select>
-      </td>
-      <td>${unitsForUser(p.id)}</td>
+      <td><span class="role-chip ${p.role}">${esc(ROLE_LABEL[p.role] || p.role)}</span></td>
+      <td>${recCell}</td>
+      <td>${unitCell}</td>
       <td><span class="pill ${p.status}">${p.status}</span></td>
       <td style="text-align:right">
-        ${p.status !== "approved" ? `<button class="btn primary small" data-approve="${p.id}">Approve</button>` : ""}
-        <button class="btn ghost small" data-link-unit="${p.id}">Link unit</button>
+        <button class="btn ${rec && p.status === "approved" ? "ghost" : "primary"} small" data-user-link="${p.id}">
+          ${p.status !== "approved" ? "Approve & link" : (rec ? "Change" : "Link record")}</button>
       </td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
 
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>👥 Users &amp; approvals</h2>
-        <span class="hint">Approve new sign-ups, set their role, link them to units</span></div>
+      <div class="panel-head"><h2>👥 Users &amp; approvals</h2></div>
+      <p class="muted tiny">Each user is linked to one registry record that matches their role. Their units come from that record — to change a user's units, edit the record. Add the person to the right registry first, then link them here.</p>
       <div class="table-wrap"><table><thead><tr>
-        <th>User</th><th>Role</th><th>Linked units</th><th>Status</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No one yet.</td></tr>`}</tbody></table></div>
+        <th>User</th><th>Role</th><th>Registry record</th><th>Units (from record)</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="6" class="empty">No one yet.</td></tr>`}</tbody></table></div>
     </div>`;
+}
+
+/* ---------- Link a user to their registry record (role + record) ---------- */
+let userLinkCtx = { userId: null };
+
+function openUserLinkModal(userId) {
+  const p = state.profiles.find((x) => x.id === userId);
+  if (!p) return;
+  userLinkCtx = { userId };
+  $("#userlink-who").textContent = `${p.full_name || p.email}${p.full_name ? " · " + p.email : ""}`;
+  $("#userlink-role").innerHTML = ROLE_ORDER.map((r) =>
+    `<option value="${r}" ${p.role === r ? "selected" : ""}>${ROLE_LABEL[r]}</option>`).join("");
+  $("#userlink-msg").textContent = "";
+  fillUserLinkRecords();
+  $("#userlink-modal").classList.add("active");
+}
+
+function fillUserLinkRecords() {
+  const p = state.profiles.find((x) => x.id === userLinkCtx.userId);
+  const role = $("#userlink-role").value;
+  const recs = linkableRecords(role, p.id);
+  const current = recordForUser({ ...p, role });
+  const reg = ROLE_REGISTRY[role];
+  $("#userlink-record").innerHTML = `<option value="">— choose the ${esc(reg.noun)} —</option>` +
+    recs.map((r) => {
+      const hint = recordHint(role, r);
+      return `<option value="${r.id}" ${current && current.id === r.id ? "selected" : ""}>${esc(recordLabel(role, r))}${hint ? " · " + esc(hint) : ""}</option>`;
+    }).join("");
+  $("#userlink-none").hidden = recs.length > 0;
+  $("#userlink-none-text").textContent =
+    `There is no unlinked ${reg.noun} record yet. Add the person to the ${reg.noun} registry first.`;
+  $("#userlink-goto").dataset.view = reg.view;
+  if (role !== p.role) {
+    setMsg("userlink-msg", `Changing role from ${ROLE_LABEL[p.role] || p.role} to ${ROLE_LABEL[role]} will unlink their current record.`, true);
+  } else {
+    $("#userlink-msg").textContent = "";
+  }
+}
+
+$("#userlink-role").addEventListener("change", fillUserLinkRecords);
+
+$("#userlink-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const role = $("#userlink-role").value;
+  const recordId = $("#userlink-record").value;
+  if (!recordId) {
+    setMsg("userlink-msg", `⚠️ Choose the ${ROLE_REGISTRY[role].noun} record to link this user to.`, false);
+    return;
+  }
+  const { error } = await sb.rpc("link_user_to_record", {
+    p_user: userLinkCtx.userId, p_role: role, p_record: recordId,
+  });
+  if (error) { setMsg("userlink-msg", "⚠️ " + error.message, false); return; }
+  closeOverlays();
+  await loadData();
+  renderPeople();
+});
+
+/* ---------- Users <-> registry records ----------
+   A user's role decides which registry they belong to; they are linked to
+   exactly one record there (record.profile_id = user id). */
+const ROLE_REGISTRY = {
+  trustee:          { list: () => state.registry.trustees,  noun: "trustee",          view: "reg-trustees" },
+  owner:            { list: () => state.owners,             noun: "owner",            view: "owners" },
+  tenant:           { list: () => state.tenants,            noun: "tenant",           view: "tenants" },
+  occupant:         { list: () => state.occupants,          noun: "occupant",         view: "occupants" },
+  gardener:         { list: () => state.registry.gardeners, noun: "gardener",         view: "reg-gardeners" },
+  service_provider: { list: () => state.registry.providers, noun: "service provider", view: "reg-providers" },
+};
+const ROLE_ORDER = ["trustee", "owner", "tenant", "occupant", "gardener", "service_provider"];
+
+// The registry record linked to this user for their current role (or null).
+function recordForUser(p) {
+  const reg = ROLE_REGISTRY[p.role];
+  return reg ? (reg.list() || []).find((r) => r.profile_id === p.id) || null : null;
+}
+// Readable name for any registry record.
+function recordLabel(role, r) {
+  if (!r) return "—";
+  if (role === "service_provider") return r.kind === "company" ? (r.company_name || "—") : fullName(r);
+  return fullName(r);
+}
+// Extra context shown in the record picker (unit numbers etc.).
+function recordHint(role, r) {
+  if (role === "owner") {
+    const u = ownerLinks(r.id).filter((l) => l.active).map((l) => unitNum(l.unit_id));
+    return u.length ? "unit " + u.join(", ") : "no units";
+  }
+  if (["tenant", "occupant", "trustee"].includes(role)) return r.unit_id ? "unit " + unitNum(r.unit_id) : "";
+  return "";
+}
+// Units a user is linked to, worked out from their registry record (read-only).
+function unitsFromRecord(p) {
+  const r = recordForUser(p);
+  if (!r) return [];
+  if (p.role === "owner") return ownerLinks(r.id).filter((l) => l.active).map((l) => l.unit_id);
+  if (["trustee", "tenant", "occupant"].includes(p.role)) return r.unit_id ? [r.unit_id] : [];
+  return []; // gardeners and service providers are not linked to units
+}
+// Records a user may be linked to: unlinked ones, plus their own current one.
+function linkableRecords(role, userId) {
+  return ((ROLE_REGISTRY[role] && ROLE_REGISTRY[role].list()) || [])
+    .filter((r) => !r.profile_id || r.profile_id === userId)
+    .sort((a, b) => recordLabel(role, a).localeCompare(recordLabel(role, b)));
+}
+// Which user (if any) is linked to this registry record.
+function userForRecord(r) {
+  return r && r.profile_id ? state.profiles.find((p) => p.id === r.profile_id) || { id: r.profile_id } : null;
+}
+// "Also a user" badge for registry screens.
+function userBadge(r) {
+  const u = userForRecord(r);
+  if (!u) return "";
+  const who = u.email ? ` (${esc(u.email)})` : "";
+  return `<span class="user-badge" title="Has a login${who}">🔐 user</span>`;
 }
 
 /* ---------- Reusable bits ---------- */
@@ -2593,105 +2726,6 @@ $("#unit-form").addEventListener("submit", async (e) => {
 });
 
 /* ---------- Trustee: approvals / roles / linking ---------- */
-async function approve(id) {
-  await sb.from("profiles").update({ status: "approved" }).eq("id", id);
-  await loadData(); renderPeople();
-}
-async function setRole(id, role) {
-  await sb.from("profiles").update({ role }).eq("id", id);
-  await loadData();
-}
-function openLinkModal(profileId) {
-  const person = state.profiles.find((p) => p.id === profileId);
-  if (!state.units.length) {
-    $("#link-person-label").textContent = "";
-    $("#link-msg").textContent = "⚠️ Add a unit first (Units tab), then link people to it.";
-    $("#link-msg").className = "login-msg err";
-  } else {
-    $("#link-msg").textContent = "";
-    $("#link-msg").className = "login-msg";
-    $("#link-person-label").textContent =
-      "Linking " + (person?.full_name || person?.email || "this person");
-  }
-  $("#link-profile-id").value = profileId;
-  $("#link-unit").innerHTML = state.units
-    .map((u) => `<option value="${u.id}">${esc(u.number)}</option>`)
-    .join("");
-  $("#link-relation").value = "owner";
-  $("#link-modal").classList.add("active");
-}
-
-$("#link-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const profileId = $("#link-profile-id").value;
-  const unitId = $("#link-unit").value;
-  const relation = $("#link-relation").value; // 'owner' | 'tenant'
-  if (!unitId) return;
-  const msg = $("#link-msg");
-  const profile = state.profiles.find((p) => p.id === profileId);
-
-  // 1) Record membership (used for permission checks + Linked-users view).
-  const { error: memErr } = await sb.from("unit_members").insert({
-    unit_id: unitId, profile_id: profileId, relation,
-  });
-  if (memErr && !memErr.message.includes("duplicate")) {
-    msg.textContent = "⚠️ " + memErr.message;
-    msg.className = "login-msg err";
-    return;
-  }
-
-  // 2) Registry record. Owners are people (linked to units); tenants are per unit.
-  const email = (profile?.email || "").toLowerCase();
-  const parts = (profile?.full_name || "").trim().split(/\s+/);
-  const first = parts.length > 1 ? parts.slice(0, -1).join(" ") : (parts[0] || profile?.email || "User");
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-  let regErr = null;
-
-  if (relation === "owner") {
-    let person = state.owners.find((o) => o.profile_id === profileId)
-      || state.owners.find((o) => !o.profile_id && email && (o.email || "").toLowerCase() === email);
-    if (person) {
-      if (!person.profile_id) {
-        ({ error: regErr } = await sb.from("owners").update({ profile_id: profileId }).eq("id", person.id));
-      }
-    } else {
-      person = { id: crypto.randomUUID() };
-      ({ error: regErr } = await sb.from("owners").insert({
-        id: person.id, profile_id: profileId, first_name: first, last_name: last,
-        email: profile?.email || null,
-      }));
-    }
-    if (!regErr && !state.unitOwners.some((l) => l.unit_id === unitId && l.owner_id === person.id)) {
-      const livesElsewhere = state.unitOwners.some((l) => l.owner_id === person.id && l.is_occupant && l.active);
-      ({ error: regErr } = await sb.from("unit_owners").insert({
-        unit_id: unitId, owner_id: person.id, is_occupant: !livesElsewhere, active: true,
-      }));
-    }
-  } else {
-    const existing = state.tenants.find((r) =>
-      r.unit_id === unitId && !r.profile_id && email && (r.email || "").toLowerCase() === email);
-    if (existing) {
-      ({ error: regErr } = await sb.from("tenants").update({ profile_id: profileId }).eq("id", existing.id));
-    } else {
-      ({ error: regErr } = await sb.from("tenants").insert({
-        unit_id: unitId, profile_id: profileId, first_name: first, last_name: last,
-        email: profile?.email || null, is_occupant: true, active: true,
-      }));
-    }
-  }
-  if (regErr) {
-    msg.textContent = "Linked, but could not create the " + relation + " record: " + regErr.message;
-    msg.className = "login-msg err";
-    await loadData();
-    return;
-  }
-
-  msg.textContent = `✅ Linked and created ${relation} record!`;
-  msg.className = "login-msg ok";
-  await loadData();
-  setTimeout(() => { closeOverlays(); renderPeople(); }, 900);
-});
-
 /* ---------- Delegated events ---------- */
 document.addEventListener("click", async (e) => {
   const t = e.target;
@@ -2713,8 +2747,8 @@ document.addEventListener("click", async (e) => {
   }
   if (t.dataset.delTicketPhoto) deleteTicketPhoto(t.dataset.delTicketPhoto);
 
-  if (t.dataset.approve) approve(t.dataset.approve);
-  if (t.dataset.linkUnit) openLinkModal(t.dataset.linkUnit);
+  const ulBtn = t.closest("[data-user-link]");
+  if (ulBtn) openUserLinkModal(ulBtn.dataset.userLink);
   if (t.dataset.editUnit) openUnitModal(state.units.find((u) => u.id === t.dataset.editUnit));
   if (t.dataset.editLayout) openLayoutModal(state.layouts.find((l) => l.id === t.dataset.editLayout));
 
@@ -2770,7 +2804,6 @@ document.addEventListener("click", async (e) => {
   }
 });
 document.addEventListener("change", (e) => {
-  if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
   if (e.target.id === "tenant-lease") toggleAgencyFields();
   if (e.target.classList && e.target.classList.contains("ou-active")) {
     // Show "Left on" only when the unit link is marked not active.

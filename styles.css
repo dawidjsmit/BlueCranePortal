@@ -503,3 +503,10 @@ tbody tr:hover { background: #f7f9fc; }
 .ou-top { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .ou-top select { flex: 1; margin-top: 0; }
 .chip-dim { opacity: .55; text-decoration: line-through; }
+
+/* ===== Users <-> registry records ===== */
+.user-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; vertical-align: middle; white-space: nowrap; }
+.user-line { margin: -8px 0 12px; font-size: 13px; color: #047857; }
+.user-line:empty { display: none; }
+.userlink-none { background: #fffbeb; border: 1px solid #fde68a; border-radius: 9px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
