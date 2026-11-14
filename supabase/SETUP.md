@@ -103,6 +103,11 @@ in the SQL Editor the same way:
 - **`23_communal_entity_type_description.sql`** — adds an optional
   description to each communal entity type.
 
+- **`24_ticket_status_descriptions.sql`** — a description for each of the
+  seven fixed ticket statuses, edited on the Ticket statuses screen and shown
+  as a hint wherever a status appears. Starter descriptions are filled in;
+  re-running never overwrites your edits. Statuses can't be added or removed.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'

@@ -118,6 +118,9 @@ A service end date that is empty means current. Readable and writable by trustee
 - **feedback_photos** — evidence images attached to a feedback entry.
 
 Ticket status enum: `create · sent · busy · waiting · complete · cancelled · parked`.
+The statuses are fixed (the workflow and security rules depend on them).
+`ticket_status_info` holds a trustee-editable description per status, shown as
+a hint wherever a status appears.
 
 ---
 

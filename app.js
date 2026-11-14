@@ -57,12 +57,23 @@ const TICKET_STATUS_LABEL = {
   create: "Create", sent: "Sent", busy: "Busy", waiting: "Waiting",
   complete: "Complete", cancelled: "Cancelled", parked: "Parked",
 };
+// The statuses are fixed (the workflow depends on them), in workflow order.
+const TICKET_STATUS_ORDER = ["create", "sent", "busy", "waiting", "complete", "cancelled", "parked"];
+// Trustee-edited description of a status ("" if none yet).
+function statusDesc(status) {
+  return (state.ticketStatusInfo.find((x) => x.status === status) || {}).description || "";
+}
+// A status pill whose description shows as a hint on hover / long-press.
+function statusPill(status) {
+  const d = statusDesc(status);
+  return `<span class="pill ticket-${status}"${d ? ` title="${esc(d)}"` : ""}>${TICKET_STATUS_LABEL[status]}</span>`;
+}
 // Which role each ticket can be assigned/routed to.
 const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "service_provider"];
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [] };
 let recovering = false; // true while handling a password-reset link
 let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
@@ -378,6 +389,7 @@ function navGroups() {
       items: [
         { id: "layouts", label: "Layouts", ico: "📐" },
         { id: "areatypes", label: "Communal entity types", ico: "🏷️" },
+        { id: "ticketstatuses", label: "Ticket statuses", ico: "🚦" },
         { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
         { id: "aiengagement", label: "AI engagement", ico: "✨" },
         { id: "users", label: "Users", ico: "👥" },
@@ -421,7 +433,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -442,6 +454,7 @@ async function loadData() {
     isTrustee() ? sb.from("gardeners").select("*") : Promise.resolve({ data: [] }),
     isTrustee() ? sb.from("service_providers").select("*") : Promise.resolve({ data: [] }),
     sb.from("unit_owners").select("*"),
+    sb.from("ticket_status_info").select("*"),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -465,6 +478,7 @@ async function loadData() {
     providers: regProviders.data || [],
   };
   state.unitOwners = unitOwners.data || [];
+  state.ticketStatusInfo = ticketStatusInfo.data || [];
   aiEngagementRows = []; // force AI-engagement list to reload fresh
 }
 
@@ -554,6 +568,7 @@ function showView(name) {
     pets: renderPetsList,
     layouts: renderLayouts,
     tickettypes: renderTicketTypes,
+    ticketstatuses: renderTicketStatuses,
     areatypes: renderAreaTypes,
     areas: renderAreas,
     areadetail: renderAreaDetail,
@@ -711,12 +726,13 @@ function renderAllTickets() {
   let list = state.tickets.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   if (allTicketsStatus) list = list.filter((t) => t.status === allTicketsStatus);
   const statusOpts = ["", "create", "sent", "busy", "waiting", "complete", "cancelled", "parked"]
-    .map((s) => `<option value="${s}" ${s === allTicketsStatus ? "selected" : ""}>${s ? TICKET_STATUS_LABEL[s] : "All statuses"}</option>`).join("");
+    .map((s) => `<option value="${s}" ${s === allTicketsStatus ? "selected" : ""}${s && statusDesc(s) ? ` title="${esc(statusDesc(s))}"` : ""}>${s ? TICKET_STATUS_LABEL[s] : "All statuses"}</option>`).join("");
   $("#main").innerHTML = `
     <div class="panel">
       <div class="panel-head"><h2>📋 All Tickets</h2>
         <button class="btn primary small" data-new-ticket>+ Log a ticket</button></div>
-      <div class="filters"><label>Status <select id="all-ticket-status">${statusOpts}</select></label></div>
+      <div class="filters"><label>Status <select id="all-ticket-status">${statusOpts}</select></label>
+        ${allTicketsStatus && statusDesc(allTicketsStatus) ? `<span class="muted tiny">${esc(statusDesc(allTicketsStatus))}</span>` : ""}</div>
       <div class="request-list">
         ${list.length ? list.map(ticketCard).join("") : `<div class="empty">No tickets match.</div>`}
       </div>
@@ -1542,6 +1558,47 @@ function renderPetsList() {
 }
 
 // Units a given user (profile) is linked to, as chips.
+/* ---------- Ticket statuses (fixed; trustees edit the descriptions) ---------- */
+function renderTicketStatuses() {
+  const rows = TICKET_STATUS_ORDER.map((st) => `<tr>
+      <td>${statusPill(st)}</td>
+      <td>${statusDesc(st) ? esc(statusDesc(st)) : '<span class="muted">No description yet</span>'}</td>
+      <td style="text-align:right"><button class="btn ghost small" data-edit-status="${st}">Edit</button></td>
+    </tr>`).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🚦 Ticket statuses</h2></div>
+      <p class="muted tiny">These statuses are fixed — the ticket workflow depends on them, so they can't be added, renamed or removed. You can edit each description; it is shown as a hint wherever the status appears.</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Status</th><th>Description</th><th></th>
+      </tr></thead><tbody>${rows}</tbody></table></div>
+    </div>`;
+}
+
+let editingStatus = null;
+function openStatusModal(status) {
+  editingStatus = status;
+  $("#status-modal-name").innerHTML = statusPill(status);
+  $("#status-description").value = statusDesc(status);
+  $("#status-msg").textContent = "";
+  $("#status-modal").classList.add("active");
+}
+
+$("#status-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const description = $("#status-description").value.trim() || null;
+  const { data, error } = await sb.from("ticket_status_info")
+    .update({ description }).eq("status", editingStatus).select();
+  if (error) { setMsg("status-msg", "⚠️ " + error.message, false); return; }
+  if (!data || !data.length) {
+    setMsg("status-msg", "⚠️ Not saved. Run supabase/24_ticket_status_descriptions.sql first.", false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
 function renderTicketTypes() {
   const rows = state.ticketTypes.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
     <td><strong>${esc(tt.name)}</strong></td>
@@ -2447,7 +2504,7 @@ function ticketCard(t) {
       <div><div class="rc-title">${esc(t.heading)}</div>
         <div class="rc-meta"><strong>${esc(ticketTargetLabel(t))}</strong>
           · <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span> ${assigned}</div></div>
-      <span class="pill ticket-${t.status}">${TICKET_STATUS_LABEL[t.status]}</span>
+      ${statusPill(t.status)}
     </div></div>`;
 }
 // Trustees, residents (owner/tenant/occupant), and assignees can log tickets.
@@ -2471,13 +2528,14 @@ async function openTicket(id) {
   // Trustee-only status transitions for Complete/Cancelled/Parked.
   const trusteeStatusBtns = isTrustee() && !isDraft
     ? ["complete", "cancelled", "parked"].filter((s) => s !== t.status)
-        .map((s) => `<button class="btn small ghost" data-ticket-status="${t.id}|${s}">Mark ${TICKET_STATUS_LABEL[s]}</button>`).join(" ")
+        .map((s) => `<button class="btn small ghost" data-ticket-status="${t.id}|${s}"${statusDesc(s) ? ` title="${esc(statusDesc(s))}"` : ""}>Mark ${TICKET_STATUS_LABEL[s]}</button>`).join(" ")
     : "";
 
   $("#detail-content").innerHTML = `
     <h3>${esc(t.heading)}</h3>
-    <span class="pill ticket-${t.status}">${TICKET_STATUS_LABEL[t.status]}</span>
+    ${statusPill(t.status)}
     <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span>
+    ${statusDesc(t.status) ? `<p class="status-hint">ℹ️ ${esc(statusDesc(t.status))}</p>` : ""}
     <dl class="detail-grid">
       <dt>${t.communal_area_id ? "Communal entity" : "Unit"}</dt><dd>${esc(ticketTargetLabel(t))}</dd>
       <dt>Logged by</dt><dd>${esc(loggerName(t))}${t.logged_by_role ? " (" + (ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""}</dd>
@@ -2865,6 +2923,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editPet) openPetModal(state.pets.find((p) => p.id === t.dataset.editPet));
   if (t.dataset.delUnitPhoto) deleteUnitPhoto(t.dataset.delUnitPhoto);
   if (t.dataset.editType) openTypeModal(state.ticketTypes.find((x) => x.id === t.dataset.editType));
+  if (t.dataset.editStatus) openStatusModal(t.dataset.editStatus);
 
   // Communal entities
   if (t.dataset.editAreatype) openAreaTypeModal(state.areaTypes.find((x) => x.id === t.dataset.editAreatype));
