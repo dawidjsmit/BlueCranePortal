@@ -332,7 +332,7 @@ function navGroups() {
         { id: "pets", label: "Pets", ico: "🐾" },
         { id: "areas", label: "Communal areas", ico: "🌳" },
         { id: "reg-trustees", label: "Trustees", ico: "🧑‍💼" },
-        { id: "reg-gardeners", label: "Gardeners", ico: "🌿" },
+        { id: "reg-gardeners", label: "Gardeners", ico: "🧑‍🌾" },
         { id: "reg-providers", label: "Service providers", ico: "🔧" },
       ],
     });
@@ -1428,7 +1428,7 @@ const REGISTRIES = {
     ],
   },
   gardeners: {
-    table: "gardeners", title: "Gardeners", ico: "🌿", noun: "gardener",
+    table: "gardeners", title: "Gardeners", ico: "🧑‍🌾", noun: "gardener",
     hint: "Visible to trustees only. ID numbers and dates of birth are personal information — they are shown on the edit form, not in this list.",
     displayName: (r) => fullName(r),
     fields: [
