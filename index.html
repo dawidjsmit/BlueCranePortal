@@ -147,6 +147,23 @@
     </div>
   </div>
 
+  <!-- Ticket status description modal (status itself is fixed) -->
+  <div class="modal-overlay" id="status-modal">
+    <div class="modal">
+      <h3>Edit status description</h3>
+      <form id="status-form">
+        <p>Status: <span id="status-modal-name"></span></p>
+        <label>Description <textarea id="status-description" rows="3" placeholder="What this status means for residents and trustees"></textarea></label>
+        <p class="muted tiny">The status name can't be changed — the workflow depends on it.</p>
+        <p id="status-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Ticket type maintenance modal -->
   <div class="modal-overlay" id="type-modal">
     <div class="modal">
@@ -173,6 +190,7 @@
       <form id="areatype-form">
         <input type="hidden" id="areatype-id" />
         <label>Name <input id="areatype-name" required placeholder="e.g. Road" /></label>
+        <label>Description <textarea id="areatype-description" rows="2" placeholder="e.g. Internal tarred roads and paved driveways"></textarea></label>
         <label>Sort order <input id="areatype-order" type="number" min="0" /></label>
         <label class="check"><input id="areatype-active" type="checkbox" checked /> Active</label>
         <p id="areatype-msg" class="login-msg"></p>
