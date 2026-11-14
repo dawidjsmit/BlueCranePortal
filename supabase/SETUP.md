@@ -100,6 +100,9 @@ in the SQL Editor the same way:
 - **`22_ticket_type_description.sql`** — adds an optional description to
   each ticket type (edited on the Ticket types screen).
 
+- **`23_communal_entity_type_description.sql`** — adds an optional
+  description to each communal entity type.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'
