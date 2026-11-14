@@ -367,7 +367,7 @@ function navGroups() {
         { id: "tenants", label: "Tenants", ico: "🔑" },
         { id: "occupants", label: "Occupants", ico: "🧑‍🤝‍🧑" },
         { id: "pets", label: "Pets", ico: "🐾" },
-        { id: "areas", label: "Communal entities", ico: "🌳" },
+        { id: "areas", label: "Communal entities", ico: "🧩" },
         { id: "reg-trustees", label: "Trustees", ico: "🧑‍💼" },
         { id: "reg-gardeners", label: "Gardeners", ico: "🧑‍🌾" },
         { id: "reg-providers", label: "Service providers", ico: "🔧" },
@@ -1545,6 +1545,7 @@ function renderPetsList() {
 function renderTicketTypes() {
   const rows = state.ticketTypes.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
     <td><strong>${esc(tt.name)}</strong></td>
+    <td class="muted">${esc(tt.description || "—")}</td>
     <td>${tt.sort_order}</td>
     <td>${tt.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Hidden</span>'}</td>
     <td style="text-align:right"><button class="btn ghost small" data-edit-type="${tt.id}">Edit</button></td>
@@ -1555,8 +1556,8 @@ function renderTicketTypes() {
         <button class="btn primary small" id="add-type-btn">+ Add type</button></div>
       <p class="muted tiny">The list of types users choose from when logging a ticket.</p>
       <div class="table-wrap"><table><thead><tr>
-        <th>Name</th><th>Order</th><th>Status</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No types yet.</td></tr>`}</tbody></table></div>
+        <th>Name</th><th>Description</th><th>Order</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No types yet.</td></tr>`}</tbody></table></div>
     </div>`;
   $("#add-type-btn").addEventListener("click", () => openTypeModal(null));
 }
@@ -1565,6 +1566,7 @@ function openTypeModal(type) {
   $("#type-modal-title").textContent = type ? "Edit type" : "Add type";
   $("#type-id").value = type?.id || "";
   $("#type-name").value = type?.name || "";
+  $("#type-description").value = type?.description || "";
   $("#type-order").value = type?.sort_order ?? state.ticketTypes.length + 1;
   $("#type-active").checked = type ? !!type.active : true;
   $("#type-msg").textContent = "";
@@ -1576,6 +1578,7 @@ $("#type-form").addEventListener("submit", async (e) => {
   const id = $("#type-id").value;
   const payload = {
     name: $("#type-name").value.trim(),
+    description: $("#type-description").value.trim() || null,
     sort_order: parseInt($("#type-order").value, 10) || 0,
     active: $("#type-active").checked,
   };
@@ -1884,7 +1887,7 @@ function renderAreas() {
 
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🌳 Communal entities</h2>
+      <div class="panel-head"><h2>🧩 Communal entities</h2>
         <button class="btn primary small" id="add-area-btn">+ Add entity</button></div>
       <div class="filters">
         <label>Type
@@ -1951,7 +1954,7 @@ function renderAreaDetail(areaId) {
   $("#main").innerHTML = `
     <button class="link-btn" data-back-view="areas">← Back to communal entities</button>
     <div class="panel">
-      <div class="panel-head"><h2>🌳 ${esc(a.name)}</h2>
+      <div class="panel-head"><h2>🧩 ${esc(a.name)}</h2>
         <button class="btn ghost small" data-edit-area="${a.id}">Edit</button></div>
       <dl class="detail-grid">
         <dt>Code</dt><dd>${esc(a.code)}</dd>

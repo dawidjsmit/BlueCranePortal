@@ -97,6 +97,9 @@ in the SQL Editor the same way:
   scheduled workflow `.github/workflows/keep-alive.yml` reads once a day, so
   the free Supabase project never pauses for inactivity. Run it once.
 
+- **`22_ticket_type_description.sql`** — adds an optional description to
+  each ticket type (edited on the Ticket types screen).
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'

@@ -107,7 +107,7 @@ A service end date that is empty means current. Readable and writable by trustee
 
 ### Tickets (the request workflow)
 
-- **ticket_types** — trustee-managed list (`name`, `sort_order`, `active`).
+- **ticket_types** — trustee-managed list (`name`, `description`, `sort_order`, `active`).
   Seeded: Question, Problem, Request, Complaint, Maintenance.
 - **tickets** — `unit_id`, `type_id`, `logged_by` (+`logged_by_role`),
   `heading`, `description`, `status` (`ticket_status`), `assigned_role`
