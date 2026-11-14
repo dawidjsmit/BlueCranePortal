@@ -67,6 +67,11 @@ in the SQL Editor the same way:
   a CHECK enforcing exactly one of the two, and updates ticket visibility
   so communal-area tickets reach trustees, the logger, and the routed role.
 
+- **`17_units_number_integer.sql`** — makes the unit number a whole number
+  (so units sort 1, 2, 3 ... 10 instead of alphabetically). Stops with a
+  clear message, changing nothing, if any unit number is not a plain number
+  or two units would end up with the same number.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'

@@ -399,7 +399,7 @@ async function loadData() {
     sb.from("communal_areas").select("*").order("code"),
     sb.from("communal_area_photos").select("*").order("created_at"),
   ]);
-  state.units = units.data || [];
+  state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
   state.profiles = profiles.data || [];
   state.layouts = layouts.data || [];
@@ -467,8 +467,14 @@ function showView(name) {
   if (render) render();
 }
 
+// Sort units by their number, numerically (2 before 10). Falls back to text
+// for any legacy non-numeric value (e.g. "12A").
+function unitCompare(a, b) {
+  return (parseInt(a.number, 10) || 0) - (parseInt(b.number, 10) || 0)
+    || String(a.number).localeCompare(String(b.number));
+}
 function unitNum(id) {
-  return state.units.find((u) => u.id === id)?.number || "?";
+  return state.units.find((u) => u.id === id)?.number ?? "?";
 }
 function layoutById(id) {
   return state.layouts.find((l) => l.id === id);
@@ -557,9 +563,8 @@ function renderMyTickets() {
 // "My Unit's Tickets" — tickets on a chosen unit I'm linked to.
 let unitTicketsSelectedUnit = null;
 function renderUnitTickets() {
-  const ids = [...myUnitIds()];
-  const myUnits = state.units.filter((u) => ids.has(u.id))
-    .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+  const ids = myUnitIds();
+  const myUnits = state.units.filter((u) => ids.has(u.id)).sort(unitCompare);
   if (!myUnits.length) {
     $("#main").innerHTML = `<div class="panel"><div class="panel-head"><h2>🏢 My Unit's Tickets</h2></div>
       <div class="empty">No units are linked to you yet.</div></div>`;
@@ -668,7 +673,8 @@ function renderMyUnits() {
 function openUnitModal(unit) {
   $("#unit-modal-title").textContent = unit ? "Edit unit" : "Add unit";
   $("#unit-id").value = unit?.id || "";
-  $("#unit-number").value = unit?.number || "";
+  $("#unit-number").value = unit?.number ?? "";
+  $("#unit-msg").textContent = "";
   $("#unit-notes").value = unit?.notes || "";
   // Layout dropdown
   $("#unit-layout").innerHTML =
@@ -2215,15 +2221,24 @@ $("#ticket-form").addEventListener("submit", async (e) => {
 $("#unit-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = $("#unit-id").value;
+  const num = Number($("#unit-number").value);
+  if (!Number.isInteger(num) || num < 1) {
+    setMsg("unit-msg", "⚠️ The unit number must be a whole number, 1 or higher.", false);
+    return;
+  }
   const payload = {
-    number: $("#unit-number").value.trim(),
+    number: num,
     notes: $("#unit-notes").value.trim(),
     layout_id: $("#unit-layout").value || null,
   };
   const { error } = id
     ? await sb.from("units").update(payload).eq("id", id)
     : await sb.from("units").insert(payload);
-  if (error) { alert(error.message); return; }
+  if (error) {
+    setMsg("unit-msg", error.message.includes("duplicate")
+      ? "A unit with that number already exists." : "⚠️ " + error.message, false);
+    return;
+  }
   closeOverlays();
   await loadData();
   refreshActiveView();
