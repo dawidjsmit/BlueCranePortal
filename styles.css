@@ -496,3 +496,10 @@ tbody tr:hover { background: #f7f9fc; }
 .ask-share {
   margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
+
+/* ===== Owner form: units owned ===== */
+.ou-heading { margin: 10px 0 6px; font-size: 14px; }
+.ou-row { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: #f9fafb; }
+.ou-top { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.ou-top select { flex: 1; margin-top: 0; }
+.chip-dim { opacity: .55; text-decoration: line-through; }
