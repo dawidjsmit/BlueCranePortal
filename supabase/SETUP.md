@@ -84,6 +84,15 @@ in the SQL Editor the same way:
   ids); a safety check stops the script, changing nothing, if any row fails
   to carry over. Run it straight after deploying the matching app update.
 
+- **`20_user_registry_link.sql`** — each login user is linked to ONE
+  registry record matching their role (trustee, owner, tenant, occupant,
+  gardener, service provider); their units come from that record. Unit
+  membership for security rules is now worked out from the registry. Also:
+  only trustees can change a user's role or status (previously a user could
+  change their own via the API), and the last trustee cannot be demoted.
+  After running it, add yourself on the Trustees registry and link your own
+  user to that record on the Users screen.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'

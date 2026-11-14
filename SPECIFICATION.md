@@ -63,9 +63,14 @@ The first trustee is promoted manually once via SQL.
 - **units** — `number` (unique whole number, >= 1), `notes`, `layout_id` → `unit_layouts`.
 - **unit_layouts** — `code` (unique), `description`, `drawing_path` (image in
   Storage). ~5 house layouts; a maintenance screen shows which units use each.
-- **unit_members** — links a user (`profile_id`) to a `unit_id` with a
-  `relation` (owner/tenant/occupant). Drives permission checks + the
-  "Linked users" view.
+- **User ↔ registry link** — each login user is linked to exactly one registry
+  record for their role (`trustees`, `owners`, `tenants`, `occupants`,
+  `gardeners`, `service_providers`; the record's `profile_id` = the user). A
+  user's units are derived from that record (trustee: its unit; owner: its
+  active unit links; tenant/occupant: its unit; gardener / service provider:
+  none). Linking is done by the trustee-only `link_user_to_record()` function.
+- **unit_members** — legacy hand-made user↔unit links; kept only where the
+  registry doesn't yet cover a user.
 
 ### People per unit (many per unit; separate from login users)
 
