@@ -77,6 +77,13 @@ in the SQL Editor the same way:
   (person or company). Visible to and editable by trustees only. Each has an
   optional link to a login user, used by a later update.
 
+- **`19_owners_many_units.sql`** — owners become one record per PERSON,
+  linked to each unit they own (`unit_owners`), with owner-since, "lives
+  here" (occupant) and active/left-on held per unit. An owner can be the
+  occupant of only one unit. Existing owners convert automatically (same
+  ids); a safety check stops the script, changing nothing, if any row fails
+  to carry over. Run it straight after deploying the matching app update.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'

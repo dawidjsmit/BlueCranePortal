@@ -62,7 +62,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] } };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [] };
 let recovering = false; // true while handling a password-reset link
 let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
@@ -257,13 +257,52 @@ function amOccupantOf(unitId) {
 /* ---- Client-side permission helpers (mirror the DB RLS) ----
    These decide what the UI SHOWS/enables. The database enforces the
    real rules regardless, so these are for UX, not security. */
+// Owners are PEOPLE; each owns 1+ units through unit_owners links (which hold
+// owner-since, is-occupant, active and left-on for that unit).
+function ownerLinks(ownerId) {
+  return state.unitOwners.filter((l) => l.owner_id === ownerId);
+}
+function myOwnerIds() {
+  return new Set(state.owners.filter((o) => o.profile_id === me.id).map((o) => o.id));
+}
+// One row per owner of a unit, shaped like the old per-unit owner rows
+// (id = the person's id) so the unit screens can keep using them.
+function ownerRowsForUnit(unitId) {
+  return state.unitOwners.filter((l) => l.unit_id === unitId).map((l) => {
+    const o = state.owners.find((x) => x.id === l.owner_id);
+    return o ? { ...o, link_id: l.id, unit_id: l.unit_id, owner_since: l.owner_since,
+                 is_occupant: l.is_occupant, active: l.active, left_on: l.left_on } : null;
+  }).filter(Boolean);
+}
+// Checks the unit rows on the owner form. Returns an error message or null.
+function validateOwnerRows(rows, isNew) {
+  if (isNew && !rows.length) return "Add at least one unit for this owner.";
+  if (rows.some((r) => !r.unit_id)) return "Please choose a unit for every row.";
+  if (new Set(rows.map((r) => r.unit_id)).size !== rows.length) return "The same unit is listed twice.";
+  if (rows.filter((r) => r.is_occupant && r.active).length > 1)
+    return "An owner can only live in (be the occupant of) one unit.";
+  return null;
+}
+// Save rows that are NOT the active occupant first, so moving "lives here"
+// from one unit to another never briefly breaks the one-occupancy rule.
+function orderOwnerRowsForSave(rows) {
+  return rows.slice().sort((a, b) => (a.is_occupant && a.active) - (b.is_occupant && b.active));
+}
+function ownerErrorText(error) {
+  const m = (error && error.message) || "";
+  if (m.includes("uq_owner_one_occupancy")) return "An owner can only live in (be the occupant of) one unit.";
+  if (m.includes("duplicate")) return "This owner is already linked to that unit.";
+  return m;
+}
+
 function myUnitIds() {
   // Units this user can access.
   const ids = new Set();
   if (isResident()) {
     // Owners/tenants/occupants: via unit_members or a record (profile_id).
     state.members.filter((m) => m.profile_id === me.id).forEach((m) => ids.add(m.unit_id));
-    state.owners.filter((o) => o.profile_id === me.id && o.active).forEach((o) => ids.add(o.unit_id));
+    const mineOwner = myOwnerIds();
+    state.unitOwners.filter((l) => mineOwner.has(l.owner_id) && l.active).forEach((l) => ids.add(l.unit_id));
     state.tenants.filter((t) => t.profile_id === me.id && t.active).forEach((t) => ids.add(t.unit_id));
     state.occupants.filter((o) => o.profile_id === me.id && o.active).forEach((o) => ids.add(o.unit_id));
   }
@@ -275,10 +314,8 @@ function myUnitIds() {
   return ids;
 }
 function amOwnerOf(unitId) {
-  if (me.role !== "owner" && me.role !== "trustee") {
-    // allow owner role check regardless, but typical owners have role 'owner'
-  }
-  return state.owners.some((o) => o.unit_id === unitId && o.profile_id === me.id && o.active)
+  const mineOwner = myOwnerIds();
+  return state.unitOwners.some((l) => l.unit_id === unitId && l.active && mineOwner.has(l.owner_id))
       || state.members.some((m) => m.unit_id === unitId && m.profile_id === me.id && m.relation === "owner");
 }
 function amTenantOf(unitId) {
@@ -384,7 +421,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -404,6 +441,7 @@ async function loadData() {
     isTrustee() ? sb.from("trustees").select("*") : Promise.resolve({ data: [] }),
     isTrustee() ? sb.from("gardeners").select("*") : Promise.resolve({ data: [] }),
     isTrustee() ? sb.from("service_providers").select("*") : Promise.resolve({ data: [] }),
+    sb.from("unit_owners").select("*"),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -426,6 +464,7 @@ async function loadData() {
     gardeners: regGardeners.data || [],
     providers: regProviders.data || [],
   };
+  state.unitOwners = unitOwners.data || [];
   aiEngagementRows = []; // force AI-engagement list to reload fresh
 }
 
@@ -650,7 +689,7 @@ function renderUnits() {
       </tr></thead><tbody>
         ${state.units.map((u) => {
           const open = state.tickets.filter((r) => r.unit_id === u.id && !["complete", "cancelled"].includes(r.status)).length;
-          const owners = state.owners.filter((o) => o.unit_id === u.id && o.active).length;
+          const owners = state.unitOwners.filter((l) => l.unit_id === u.id && l.active).length;
           const tenants = state.tenants.filter((tn) => tn.unit_id === u.id && tn.active).length;
           return `<tr>
             <td><strong>${esc(u.number)}</strong></td>
@@ -738,7 +777,7 @@ function renderUnitDetail(unitId) {
 
   // Residents see only ACTIVE rows; trustees see everything.
   const activeOnly = (arr) => showInactive() ? arr : arr.filter((x) => x.active);
-  const owners = activeOnly(state.owners.filter((o) => o.unit_id === unitId));
+  const owners = activeOnly(ownerRowsForUnit(unitId));
   const tenants = activeOnly(state.tenants.filter((t) => t.unit_id === unitId));
   const layout = layoutById(u.layout_id);
 
@@ -774,7 +813,7 @@ function renderUnitDetail(unitId) {
     ${canSeeOwners(unitId) ? `
     <div class="panel">
       <div class="panel-head"><h2>👤 Owners</h2>
-        ${canEditOwners(unitId) ? `<button class="btn primary small" data-add-owner>+ Add owner</button>` : ""}</div>
+        ${canEditOwners(unitId) ? `${isTrustee() ? `<button class="btn ghost small" data-link-owner>Link existing owner</button> ` : ""}<button class="btn primary small" data-add-owner>+ Add new owner</button>` : ""}</div>
       ${personTable(owners, "owner", canEditOwners(unitId))}
     </div>` : ""}
 
@@ -860,8 +899,8 @@ async function deleteUnitPhoto(photoId) {
    Returns [{kind, id, name, detail, active, record}] */
 function occupantsFor(unitId) {
   const list = [];
-  state.owners
-    .filter((o) => o.unit_id === unitId && o.is_occupant)
+  ownerRowsForUnit(unitId)
+    .filter((o) => o.is_occupant)
     .forEach((o) => list.push({ kind: "owner", id: o.id, name: fullName(o),
       detail: "Owner", active: o.active, auto: true }));
   state.tenants
@@ -943,42 +982,131 @@ function personTable(people, kind, canEdit = true) {
   </tbody></table></div>`;
 }
 
-/* ----- Owner modal ----- */
-function openOwnerModal(owner) {
+/* ----- Owner modal: a person + the units they own ----- */
+let ownerCtx = { unitCtx: null };
+
+function ownerUnitRowHtml(link, locked) {
+  const l = link || { active: true };
+  const opts = `<option value="">— choose unit —</option>` + state.units.map((u) =>
+    `<option value="${u.id}" ${l.unit_id === u.id ? "selected" : ""}>Unit ${esc(u.number)}</option>`).join("");
+  return `<div class="ou-row" data-link-id="${l.id || ""}">
+    <div class="ou-top">
+      <select class="ou-unit" ${locked ? "disabled" : ""}>${opts}</select>
+      ${locked ? "" : `<button type="button" class="btn ghost small" data-ou-remove>Remove</button>`}
+    </div>
+    <div class="row">
+      <label>Owner since <input type="date" class="ou-since" value="${esc(l.owner_since || "")}" /></label>
+      <label class="ou-left-wrap" ${l.active === false ? "" : "hidden"}>Left on <input type="date" class="ou-left" value="${esc(l.left_on || "")}" /></label>
+    </div>
+    <label class="check"><input type="checkbox" class="ou-occ" ${l.is_occupant ? "checked" : ""} /> Lives in this unit (occupant)</label>
+    <label class="check"><input type="checkbox" class="ou-active" ${l.active === false ? "" : "checked"} /> Active (still the owner of this unit)</label>
+  </div>`;
+}
+
+// owner: the person (or null for new). unitCtx: the unit screen it was opened
+// from. Trustees see/edit every unit link; an owner (resident) only the link
+// for the unit they are looking at.
+function openOwnerModal(owner, unitCtx) {
+  const trustee = isTrustee();
+  ownerCtx = { unitCtx: unitCtx || null };
   $("#owner-modal-title").textContent = owner ? "Edit owner" : "Add owner";
   $("#owner-id").value = owner?.id || "";
   $("#owner-first").value = owner?.first_name || "";
   $("#owner-last").value = owner?.last_name || "";
   $("#owner-cell").value = owner?.cell || "";
   $("#owner-email").value = owner?.email || "";
-  $("#owner-since").value = owner?.owner_since || "";
-  $("#owner-occupant").checked = !!owner?.is_occupant;
-  $("#owner-active").checked = owner ? !!owner.active : true;
-  $("#owner-left").value = owner?.left_on || "";
+  let links = owner ? ownerLinks(owner.id) : [];
+  if (!trustee) links = links.filter((l) => l.unit_id === unitCtx);
+  if (!owner && !links.length) links = [{ unit_id: unitCtx || "", active: true }];
+  const locked = !trustee;
+  links = links.slice().sort((a, b) => (parseInt(unitNum(a.unit_id), 10) || 0) - (parseInt(unitNum(b.unit_id), 10) || 0));
+  $("#owner-units").innerHTML = links.map((l) => ownerUnitRowHtml(l, locked)).join("");
+  $("#owner-add-unit").hidden = locked;
   $("#owner-msg").textContent = "";
-  toggleLeftOn("owner");
   $("#owner-modal").classList.add("active");
 }
 
+$("#owner-add-unit").addEventListener("click", () => {
+  $("#owner-units").insertAdjacentHTML("beforeend", ownerUnitRowHtml(null, false));
+});
+
 $("#owner-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const id = $("#owner-id").value;
-  const active = $("#owner-active").checked;
-  const payload = {
-    unit_id: currentUnitId,
+  const trustee = isTrustee();
+  const existingId = $("#owner-id").value;
+  const personId = existingId || crypto.randomUUID();
+  const person = {
     first_name: $("#owner-first").value.trim(),
     last_name: $("#owner-last").value.trim(),
     cell: $("#owner-cell").value.trim() || null,
     email: $("#owner-email").value.trim() || null,
-    owner_since: $("#owner-since").value || null,
-    is_occupant: $("#owner-occupant").checked,
-    active,
-    left_on: active ? null : ($("#owner-left").value || null),
   };
-  const { error } = id
-    ? await sb.from("owners").update(payload).eq("id", id)
-    : await sb.from("owners").insert(payload);
-  if (error) { setMsg("owner-msg", "⚠️ " + error.message, false); return; }
+  const rows = [...document.querySelectorAll("#owner-units .ou-row")].map((r) => {
+    const active = r.querySelector(".ou-active").checked;
+    return {
+      id: r.dataset.linkId || null,
+      unit_id: r.querySelector(".ou-unit").value,
+      owner_since: r.querySelector(".ou-since").value || null,
+      is_occupant: r.querySelector(".ou-occ").checked,
+      active,
+      left_on: active ? null : (r.querySelector(".ou-left").value || null),
+    };
+  });
+  const problem = validateOwnerRows(rows, !existingId);
+  if (problem) { setMsg("owner-msg", "⚠️ " + problem, false); return; }
+
+  // 1) the person
+  const personRes = existingId
+    ? await sb.from("owners").update(person).eq("id", existingId)
+    : await sb.from("owners").insert({ id: personId, ...person });
+  if (personRes.error) { setMsg("owner-msg", "⚠️ " + ownerErrorText(personRes.error), false); return; }
+  $("#owner-id").value = personId;   // a retry after a later failure updates, not re-inserts
+
+  // 2) their unit links: removed ones (trustees only), then changed/new ones
+  const keep = new Set(rows.filter((r) => r.id).map((r) => r.id));
+  const removed = trustee ? ownerLinks(personId).filter((l) => !keep.has(l.id)) : [];
+  for (const l of removed) {
+    const { error } = await sb.from("unit_owners").delete().eq("id", l.id);
+    if (error) { setMsg("owner-msg", "⚠️ " + ownerErrorText(error), false); await loadData(); return; }
+  }
+  for (const r of orderOwnerRowsForSave(rows)) {
+    const { id, ...fields } = r;
+    const { error } = id
+      ? await sb.from("unit_owners").update(fields).eq("id", id)
+      : await sb.from("unit_owners").insert({ ...fields, owner_id: personId });
+    if (error) { setMsg("owner-msg", "⚠️ " + ownerErrorText(error), false); await loadData(); return; }
+  }
+  closeOverlays();
+  await loadData();
+  if (ownerCtx.unitCtx) renderUnitDetail(ownerCtx.unitCtx); else refreshActiveView();
+});
+
+/* ----- Link an existing owner to this unit (so nobody is entered twice) ----- */
+function openLinkOwnerModal() {
+  const linked = new Set(state.unitOwners.filter((l) => l.unit_id === currentUnitId).map((l) => l.owner_id));
+  const options = state.owners.filter((o) => !linked.has(o.id))
+    .sort((a, b) => fullName(a).localeCompare(fullName(b)))
+    .map((o) => {
+      const units = ownerLinks(o.id).map((l) => unitNum(l.unit_id)).join(", ");
+      return `<option value="${o.id}">${esc(fullName(o))}${units ? " (unit " + esc(units) + ")" : ""}</option>`;
+    }).join("");
+  $("#linkowner-owner").innerHTML = `<option value="">— choose an owner —</option>` + options;
+  $("#linkowner-since").value = "";
+  $("#linkowner-occ").checked = false;
+  $("#linkowner-msg").textContent = "";
+  $("#linkowner-modal").classList.add("active");
+}
+
+$("#linkowner-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const ownerId = $("#linkowner-owner").value;
+  if (!ownerId) { setMsg("linkowner-msg", "⚠️ Please choose an owner.", false); return; }
+  const { error } = await sb.from("unit_owners").insert({
+    unit_id: currentUnitId, owner_id: ownerId,
+    owner_since: $("#linkowner-since").value || null,
+    is_occupant: $("#linkowner-occ").checked, active: true,
+  });
+  if (error) { setMsg("linkowner-msg", "⚠️ " + ownerErrorText(error), false); return; }
   closeOverlays();
   await loadData();
   renderUnitDetail(currentUnitId);
@@ -1049,7 +1177,7 @@ function openOccupantModal(occupant) {
   $("#occupant-left").value = occupant?.left_on || "";
   // Related owner / tenant dropdowns, scoped to the current unit (active).
   // Tenants cannot see owners, so hide the "related to owner" field for them.
-  const owners = state.owners.filter((o) => o.unit_id === currentUnitId && o.active);
+  const owners = ownerRowsForUnit(currentUnitId).filter((o) => o.active);
   const tenants = state.tenants.filter((t) => t.unit_id === currentUnitId && t.active);
   const seeOwners = canSeeOwners(currentUnitId);
   $("#occupant-owner-wrap").hidden = !seeOwners;
@@ -1105,7 +1233,7 @@ function openPetModal(pet) {
   const holders = [];
   const seeOwners = canSeeOwners(currentUnitId); // tenants: false
   if (seeOwners) {
-    state.owners.filter((o) => o.unit_id === currentUnitId && o.active && o.is_occupant).forEach((o) =>
+    ownerRowsForUnit(currentUnitId).filter((o) => o.active && o.is_occupant).forEach((o) =>
       holders.push({ v: `owner|${o.id}`, label: fullName(o) + " (owner)" }));
   }
   state.tenants.filter((t) => t.unit_id === currentUnitId && t.active && t.is_occupant).forEach((t) =>
@@ -1276,18 +1404,34 @@ function listPanel(title, headers, rows) {
 }
 
 function renderOwnersList() {
+  const isActive = (o) => ownerLinks(o.id).some((l) => l.active);
+  const unitSort = (x, y) => (parseInt(unitNum(x.unit_id), 10) || 0) - (parseInt(unitNum(y.unit_id), 10) || 0);
   const rows = state.owners.slice()
-    .sort((a, b) => (b.active - a.active) || fullName(a).localeCompare(fullName(b)))
-    .map((o) => `<tr class="${o.active ? "" : "inactive-row"}">
-      <td><strong>${esc(fullName(o))}</strong></td>
-      <td>${unitLinkChip(o.unit_id)}</td>
-      <td>${contactLine(o)}</td>
-      <td>${fmtDay(o.owner_since)}</td>
-      <td>${o.is_occupant ? "Yes" : "No"}</td>
-      <td>${o.active ? '<span class="pill approved">Active</span>' : `<span class="pill rejected">Left ${fmtDay(o.left_on)}</span>`}</td>
-    </tr>`).join("");
-  $("#main").innerHTML = listPanel("👤 Owners",
-    ["Name", "Unit", "Contact", "Since", "Occupant", "Status"], rows);
+    .sort((a, b) => (isActive(b) - isActive(a)) || fullName(a).localeCompare(fullName(b)))
+    .map((o) => {
+      const links = ownerLinks(o.id).slice().sort(unitSort);
+      const chips = links.length
+        ? links.map((l) => l.active
+            ? unitLinkChip(l.unit_id) + (l.is_occupant ? '<span title="Lives here"> 🏠</span>' : "")
+            : `<span class="chip chip-dim" title="No longer an owner of this unit">${esc(unitNum(l.unit_id))}</span>`).join(" ")
+        : '<span class="muted tiny">no units</span>';
+      return `<tr class="${isActive(o) ? "" : "inactive-row"}">
+        <td><strong>${esc(fullName(o))}</strong></td>
+        <td>${chips}</td>
+        <td>${contactLine(o)}</td>
+        <td>${isActive(o) ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Former</span>'}</td>
+        <td style="text-align:right"><button class="btn ghost small" data-edit-owner-global="${o.id}">Edit</button></td>
+      </tr>`;
+    }).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>👤 Owners</h2>
+        <button class="btn primary small" data-add-owner-global>+ Add owner</button></div>
+      <p class="muted tiny">One entry per person. An owner of several units is entered once and linked to each unit (🏠 = lives in that unit).</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Name</th><th>Units</th><th>Contact</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No owners yet.</td></tr>`}</tbody></table></div>
+    </div>`;
 }
 
 function renderTenantsList() {
@@ -2496,30 +2640,44 @@ $("#link-form").addEventListener("submit", async (e) => {
     return;
   }
 
-  // 2) Option (a): attach to an existing matching record on this unit
-  //    (same email, not yet linked), else create a new registry record.
-  const table = relation === "tenant" ? "tenants" : "owners";
-  const pool = relation === "tenant" ? state.tenants : state.owners;
+  // 2) Registry record. Owners are people (linked to units); tenants are per unit.
   const email = (profile?.email || "").toLowerCase();
-
-  const existing = pool.find((r) =>
-    r.unit_id === unitId && !r.profile_id &&
-    (r.email || "").toLowerCase() === email && email);
-
+  const parts = (profile?.full_name || "").trim().split(/\s+/);
+  const first = parts.length > 1 ? parts.slice(0, -1).join(" ") : (parts[0] || profile?.email || "User");
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
   let regErr = null;
-  if (existing) {
-    ({ error: regErr } = await sb.from(table).update({ profile_id: profileId }).eq("id", existing.id));
+
+  if (relation === "owner") {
+    let person = state.owners.find((o) => o.profile_id === profileId)
+      || state.owners.find((o) => !o.profile_id && email && (o.email || "").toLowerCase() === email);
+    if (person) {
+      if (!person.profile_id) {
+        ({ error: regErr } = await sb.from("owners").update({ profile_id: profileId }).eq("id", person.id));
+      }
+    } else {
+      person = { id: crypto.randomUUID() };
+      ({ error: regErr } = await sb.from("owners").insert({
+        id: person.id, profile_id: profileId, first_name: first, last_name: last,
+        email: profile?.email || null,
+      }));
+    }
+    if (!regErr && !state.unitOwners.some((l) => l.unit_id === unitId && l.owner_id === person.id)) {
+      const livesElsewhere = state.unitOwners.some((l) => l.owner_id === person.id && l.is_occupant && l.active);
+      ({ error: regErr } = await sb.from("unit_owners").insert({
+        unit_id: unitId, owner_id: person.id, is_occupant: !livesElsewhere, active: true,
+      }));
+    }
   } else {
-    // Derive first/last name from the profile's full name.
-    const parts = (profile?.full_name || "").trim().split(/\s+/);
-    const first = parts.length > 1 ? parts.slice(0, -1).join(" ") : (parts[0] || profile?.email || "User");
-    const last = parts.length > 1 ? parts[parts.length - 1] : "";
-    const base = {
-      unit_id: unitId, profile_id: profileId,
-      first_name: first, last_name: last,
-      email: profile?.email || null, is_occupant: true, active: true,
-    };
-    ({ error: regErr } = await sb.from(table).insert(base));
+    const existing = state.tenants.find((r) =>
+      r.unit_id === unitId && !r.profile_id && email && (r.email || "").toLowerCase() === email);
+    if (existing) {
+      ({ error: regErr } = await sb.from("tenants").update({ profile_id: profileId }).eq("id", existing.id));
+    } else {
+      ({ error: regErr } = await sb.from("tenants").insert({
+        unit_id: unitId, profile_id: profileId, first_name: first, last_name: last,
+        email: profile?.email || null, is_occupant: true, active: true,
+      }));
+    }
   }
   if (regErr) {
     msg.textContent = "Linked, but could not create the " + relation + " record: " + regErr.message;
@@ -2563,9 +2721,13 @@ document.addEventListener("click", async (e) => {
   // Unit detail (owners & tenants)
   if (t.dataset.openUnit) renderUnitDetail(t.dataset.openUnit);
   if (t.dataset.backView) showView(t.dataset.backView);
-  if (t.hasAttribute("data-add-owner")) openOwnerModal(null);
+  if (t.hasAttribute("data-add-owner")) openOwnerModal(null, currentUnitId);
+  if (t.hasAttribute("data-add-owner-global")) openOwnerModal(null, null);
+  if (t.hasAttribute("data-link-owner")) openLinkOwnerModal();
+  if (t.dataset.editOwnerGlobal) openOwnerModal(state.owners.find((o) => o.id === t.dataset.editOwnerGlobal), null);
+  if (t.hasAttribute("data-ou-remove")) t.closest(".ou-row").remove();
   if (t.hasAttribute("data-add-tenant")) openTenantModal(null);
-  if (t.dataset.editOwner) openOwnerModal(state.owners.find((o) => o.id === t.dataset.editOwner));
+  if (t.dataset.editOwner) openOwnerModal(state.owners.find((o) => o.id === t.dataset.editOwner), currentUnitId);
   if (t.dataset.editTenant) openTenantModal(state.tenants.find((tn) => tn.id === t.dataset.editTenant));
   if (t.hasAttribute("data-add-occupant")) openOccupantModal(null);
   if (t.dataset.editOccupant) openOccupantModal(state.occupants.find((oc) => oc.id === t.dataset.editOccupant));
@@ -2610,7 +2772,10 @@ document.addEventListener("click", async (e) => {
 document.addEventListener("change", (e) => {
   if (e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value);
   if (e.target.id === "tenant-lease") toggleAgencyFields();
-  if (e.target.id === "owner-active") toggleLeftOn("owner");
+  if (e.target.classList && e.target.classList.contains("ou-active")) {
+    // Show "Left on" only when the unit link is marked not active.
+    e.target.closest(".ou-row").querySelector(".ou-left-wrap").hidden = e.target.checked;
+  }
   if (e.target.id === "tenant-active") toggleLeftOn("tenant");
   if (e.target.id === "occupant-active") toggleLeftOn("occupant");
   if (e.target.id === "pet-type") togglePetOther();

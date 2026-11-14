@@ -69,8 +69,11 @@ The first trustee is promoted manually once via SQL.
 
 ### People per unit (many per unit; separate from login users)
 
-- **owners** — `first_name`, `last_name`, `cell`, `email`, `owner_since`,
-  `is_occupant`, `active`, `left_on`, optional `profile_id` (login link).
+- **owners** — one row per PERSON: `first_name`, `last_name`, `cell`, `email`,
+  optional `profile_id` (login link).
+- **unit_owners** — links an owner to each unit they own: `owner_since`,
+  `is_occupant`, `active`, `left_on`. An owner is the occupant of at most one
+  unit (while active); an owner appears on a given unit at most once.
 - **tenants** — same personal fields plus `tenant_since`, `lease_with`
   (`owner`/`agency`), `agency_name`/`agency_cell`/`agency_email`,
   `active`, `left_on`, optional `profile_id`.

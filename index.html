@@ -218,6 +218,24 @@
     </div>
   </div>
 
+  <!-- Link an existing owner to the unit being viewed -->
+  <div class="modal-overlay" id="linkowner-modal">
+    <div class="modal">
+      <h3>Link an existing owner</h3>
+      <p class="muted tiny" style="margin-top:-6px">For someone who already owns another unit — so they are not entered twice.</p>
+      <form id="linkowner-form">
+        <label>Owner <select id="linkowner-owner"></select></label>
+        <label>Owner since <input id="linkowner-since" type="date" /></label>
+        <label class="check"><input id="linkowner-occ" type="checkbox" /> Lives in this unit (occupant)</label>
+        <p id="linkowner-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Link to this unit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="detail-modal">
     <div class="modal wide"><div id="detail-content"></div>
       <div class="modal-actions"><button type="button" class="btn ghost" data-close>Close</button></div>
@@ -274,10 +292,9 @@
           <label>Cell number <input id="owner-cell" placeholder="+27 ..." /></label>
           <label>Email <input id="owner-email" type="email" /></label>
         </div>
-        <label>Owner since <input id="owner-since" type="date" /></label>
-        <label class="check"><input id="owner-occupant" type="checkbox" /> Is also an occupant</label>
-        <label class="check"><input id="owner-active" type="checkbox" checked /> Active</label>
-        <label id="owner-left-wrap" hidden>Left on <input id="owner-left" type="date" /></label>
+        <h4 class="ou-heading">Units owned</h4>
+        <div id="owner-units"></div>
+        <button type="button" class="btn ghost small" id="owner-add-unit">+ Add another unit</button>
         <p id="owner-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
