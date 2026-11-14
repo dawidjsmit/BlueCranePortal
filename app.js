@@ -475,11 +475,57 @@ function publicUrl(path) {
   if (!path) return "";
   return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 }
+/* ---------- Automatic image resizing (every upload goes through here) ----------
+   Photos from phones are often 3-5 MB and are re-downloaded on every view.
+   Before uploading, images are scaled down and re-compressed in the browser.
+   Non-images (e.g. the conduct-rules PDF) are uploaded untouched. */
+const IMAGE_LIMITS = {
+  photo:   { maxSide: 1600, quality: 0.82 }, // unit, pet, area, ticket, feedback photos
+  drawing: { maxSide: 2400, quality: 0.9 },  // layout floor plans: keep fine lines readable
+};
+const RESIZABLE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+// Target size: longest side capped at maxSide, aspect ratio kept, never enlarged.
+function scaledSize(w, h, maxSide) {
+  const scale = Math.min(1, maxSide / Math.max(w, h));
+  return { w: Math.max(1, Math.round(w * scale)), h: Math.max(1, Math.round(h * scale)) };
+}
+
+async function resizeImage(file, limits) {
+  if (!RESIZABLE_TYPES.includes(file.type)) return file;   // PDFs, GIFs, HEIC etc.: as-is
+  try {
+    // imageOrientation "from-image" applies the phone's EXIF rotation,
+    // so portrait photos are not saved sideways.
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const { w, h } = scaledSize(bmp.width, bmp.height, limits.maxSide);
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    // PNGs/WebPs may have transparency, which JPEG can't hold: use white.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(bmp, 0, 0, w, h);
+    bmp.close && bmp.close();
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", limits.quality));
+    // Keep the original if resizing failed or didn't actually save space.
+    if (!blob || blob.size >= file.size) return file;
+    const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], name, { type: "image/jpeg" });
+  } catch (err) {
+    console.warn("Image resize skipped:", err);
+    return file;   // never block an upload because resizing failed
+  }
+}
+
 // Upload a File to a folder; returns the stored path (or throws).
+// Images are resized first; layouts use the higher 'drawing' limits.
 async function uploadFile(file, folder) {
-  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const limits = folder.startsWith("layouts") ? IMAGE_LIMITS.drawing : IMAGE_LIMITS.photo;
+  const toSend = await resizeImage(file, limits);
+  const ext = (toSend.name.split(".").pop() || "jpg").toLowerCase();
   const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
-  const { error } = await sb.storage.from(BUCKET).upload(path, file, { upsert: false });
+  const { error } = await sb.storage.from(BUCKET)
+    .upload(path, toSend, { upsert: false, contentType: toSend.type || undefined });
   if (error) throw error;
   return path;
 }

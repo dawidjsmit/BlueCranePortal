@@ -1,0 +1,43 @@
+name: Keep Supabase awake
+
+# The free Supabase plan pauses a project after about a week with no database
+# activity. This runs one tiny real query every day so that never happens.
+# It reads the public keep_alive table (migration 21) using the same public
+# URL and anon key the app already ships in config.js — no secrets needed.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # every day at 03:17 UTC
+  workflow_dispatch:        # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (to read config.js)
+        uses: actions/checkout@v4
+
+      - name: Query the database
+        run: |
+          set -euo pipefail
+          URL=$(grep -o 'https://[a-z0-9]*\.supabase\.co' config.js | head -1)
+          KEY=$(grep -o 'SUPABASE_ANON_KEY: *"[^"]*"' config.js | sed 's/.*"\(.*\)"/\1/')
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::error::Could not read the Supabase URL / anon key from config.js"
+            exit 1
+          fi
+
+          STATUS=$(curl -sS -o body.txt -w '%{http_code}' \
+            "$URL/rest/v1/keep_alive?select=id&limit=1" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+
+          echo "HTTP $STATUS"; cat body.txt; echo
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Keep-alive query failed (HTTP $STATUS). If the project is already paused, restore it in the Supabase dashboard. If this says the table was not found, run supabase/21_keep_alive.sql."
+            exit 1
+          fi
+          echo "Database query succeeded - project kept awake."

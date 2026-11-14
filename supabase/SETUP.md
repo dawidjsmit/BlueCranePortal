@@ -93,6 +93,10 @@ in the SQL Editor the same way:
   After running it, add yourself on the Trustees registry and link your own
   user to that record on the Users screen.
 
+- **`21_keep_alive.sql`** — a one-row `keep_alive` table that the
+  scheduled workflow `.github/workflows/keep-alive.yml` reads once a day, so
+  the free Supabase project never pauses for inactivity. Run it once.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'
