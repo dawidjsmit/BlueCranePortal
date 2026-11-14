@@ -367,7 +367,7 @@ function navGroups() {
         { id: "tenants", label: "Tenants", ico: "🔑" },
         { id: "occupants", label: "Occupants", ico: "🧑‍🤝‍🧑" },
         { id: "pets", label: "Pets", ico: "🐾" },
-        { id: "areas", label: "Communal areas", ico: "🌳" },
+        { id: "areas", label: "Communal entities", ico: "🌳" },
         { id: "reg-trustees", label: "Trustees", ico: "🧑‍💼" },
         { id: "reg-gardeners", label: "Gardeners", ico: "🧑‍🌾" },
         { id: "reg-providers", label: "Service providers", ico: "🔧" },
@@ -377,7 +377,7 @@ function navGroups() {
       title: "Admin",
       items: [
         { id: "layouts", label: "Layouts", ico: "📐" },
-        { id: "areatypes", label: "Communal area types", ico: "🏷️" },
+        { id: "areatypes", label: "Communal entity types", ico: "🏷️" },
         { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
         { id: "aiengagement", label: "AI engagement", ico: "✨" },
         { id: "users", label: "Users", ico: "👥" },
@@ -635,7 +635,7 @@ function renderTicketCreate() {
   $("#main").innerHTML = `
     <div class="panel">
       <div class="panel-head"><h2>➕ Create a Ticket</h2></div>
-      <p class="muted">Log a new ticket about your unit or a communal area.</p>
+      <p class="muted">Log a new ticket about your unit or a communal entity.</p>
       <button class="btn primary" data-new-ticket>+ Log a ticket</button>
     </div>`;
   openTicketModal(null);
@@ -1783,7 +1783,7 @@ $("#reg-form").addEventListener("submit", async (e) => {
   refreshActiveView();
 });
 
-/* ---------- Communal area types (trustee) ---------- */
+/* ---------- Communal entity types (trustee) ---------- */
 function areaTypeName(id) {
   return state.areaTypes.find((t) => t.id === id)?.name || "—";
 }
@@ -1797,9 +1797,9 @@ function renderAreaTypes() {
   </tr>`).join("");
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🏷️ Communal area types</h2>
+      <div class="panel-head"><h2>🏷️ Communal entity types</h2>
         <button class="btn primary small" id="add-areatype-btn">+ Add type</button></div>
-      <p class="muted tiny">Types of communal area (Road, Gate, Grass, Flower Bed, Lamp pole, …).</p>
+      <p class="muted tiny">Types of communal entity (Road, Gate, Grass, Flower Bed, Lamp pole, …).</p>
       <div class="table-wrap"><table><thead><tr>
         <th>Name</th><th>Order</th><th>Status</th><th></th>
       </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No types yet.</td></tr>`}</tbody></table></div>
@@ -1837,7 +1837,7 @@ $("#areatype-form").addEventListener("submit", async (e) => {
   refreshActiveView();
 });
 
-/* ---------- Communal areas (trustee) ---------- */
+/* ---------- Communal entities (trustee) ---------- */
 function renderAreas() {
   const rows = state.areas.map((a) => {
     const photos = state.areaPhotos.filter((p) => p.area_id === a.id).length;
@@ -1852,17 +1852,17 @@ function renderAreas() {
   }).join("");
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🌳 Communal areas</h2>
-        <button class="btn primary small" id="add-area-btn">+ Add area</button></div>
+      <div class="panel-head"><h2>🌳 Communal entities</h2>
+        <button class="btn primary small" id="add-area-btn">+ Add entity</button></div>
       <div class="table-wrap"><table><thead><tr>
         <th>Code</th><th>Name</th><th>Type</th><th>Photos</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No communal areas yet.</td></tr>`}</tbody></table></div>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No communal entities yet.</td></tr>`}</tbody></table></div>
     </div>`;
   $("#add-area-btn").addEventListener("click", () => openAreaModal(null));
 }
 
 function openAreaModal(area) {
-  $("#area-modal-title").textContent = area ? "Edit communal area" : "Add communal area";
+  $("#area-modal-title").textContent = area ? "Edit communal entity" : "Add communal entity";
   $("#area-id").value = area?.id || "";
   $("#area-code").value = area?.code || "";
   $("#area-name").value = area?.name || "";
@@ -1895,7 +1895,7 @@ $("#area-form").addEventListener("submit", async (e) => {
   refreshActiveView();
 });
 
-/* ---------- Communal area detail + photos ---------- */
+/* ---------- Communal entity detail + photos ---------- */
 let currentAreaId = null;
 
 function renderAreaDetail(areaId) {
@@ -1905,7 +1905,7 @@ function renderAreaDetail(areaId) {
   const photos = state.areaPhotos.filter((p) => p.area_id === a.id);
 
   $("#main").innerHTML = `
-    <button class="link-btn" data-back-view="areas">← Back to communal areas</button>
+    <button class="link-btn" data-back-view="areas">← Back to communal entities</button>
     <div class="panel">
       <div class="panel-head"><h2>🌳 ${esc(a.name)}</h2>
         <button class="btn ghost small" data-edit-area="${a.id}">Edit</button></div>
@@ -2381,12 +2381,12 @@ function statCard(num, label, cls) {
 function ticketTypeName(id) {
   return state.ticketTypes.find((t) => t.id === id)?.name || "—";
 }
-// Where a ticket is about: a unit, or a communal area.
+// Where a ticket is about: a unit, or a communal entity.
 function ticketTargetLabel(t) {
   if (t.unit_id) return "Unit " + unitNum(t.unit_id);
   if (t.communal_area_id) {
     const a = state.areas.find((x) => x.id === t.communal_area_id);
-    return a ? (a.name) : "Communal area";
+    return a ? (a.name) : "Communal entity";
   }
   return "—";
 }
@@ -2429,7 +2429,7 @@ async function openTicket(id) {
     <span class="pill ticket-${t.status}">${TICKET_STATUS_LABEL[t.status]}</span>
     <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span>
     <dl class="detail-grid">
-      <dt>${t.communal_area_id ? "Communal area" : "Unit"}</dt><dd>${esc(ticketTargetLabel(t))}</dd>
+      <dt>${t.communal_area_id ? "Communal entity" : "Unit"}</dt><dd>${esc(ticketTargetLabel(t))}</dd>
       <dt>Logged by</dt><dd>${esc(loggerName(t))}${t.logged_by_role ? " (" + (ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""}</dd>
       <dt>Logged</dt><dd>${fmtDate(t.created_at)}</dd>
       <dt>Assigned to</dt><dd>${t.assigned_role ? (ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</dd>
@@ -2682,10 +2682,10 @@ function openTicketModal(ticket) {
   $("#ticket-unit").innerHTML = `<option value="">— none —</option>` +
     state.units.map((u) => `<option value="${u.id}" ${defaultUnit === u.id ? "selected" : ""}>${esc(u.number)}</option>`).join("");
 
-  // Communal area type (filters the area list) + area (both optional).
+  // Communal entity type (filters the entity list) + entity (both optional).
   $("#ticket-areatype").innerHTML = `<option value="">— type —</option>` +
     state.areaTypes.filter((t) => t.active).map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
-  // If editing a communal-area ticket, preselect its type.
+  // If editing a communal-entity ticket, preselect its type.
   if (ticket?.communal_area_id) {
     const a = state.areas.find((x) => x.id === ticket.communal_area_id);
     if (a?.type_id) $("#ticket-areatype").value = a.type_id;
@@ -2698,7 +2698,7 @@ function openTicketModal(ticket) {
   $("#ticket-modal").classList.add("active");
 }
 
-// Fill the communal-area dropdown based on the chosen type.
+// Fill the communal-entity dropdown based on the chosen type.
 function populateTicketAreas(selectedId) {
   const typeId = $("#ticket-areatype").value;
   const areas = state.areas.filter((a) => !typeId || a.type_id === typeId);
@@ -2712,13 +2712,13 @@ $("#ticket-form").addEventListener("submit", async (e) => {
   const unitId = $("#ticket-unit").value || null;
   const areaId = $("#ticket-area").value || null;
 
-  // Enforce: exactly one of Unit / Communal area.
+  // Enforce: exactly one of Unit / Communal entity.
   if (unitId && areaId) {
-    setMsg("ticket-msg", "⚠️ Choose either a Unit or a Communal area — not both.", false);
+    setMsg("ticket-msg", "⚠️ Choose either a Unit or a Communal entity — not both.", false);
     return;
   }
   if (!unitId && !areaId) {
-    setMsg("ticket-msg", "⚠️ Please choose either a Unit or a Communal area.", false);
+    setMsg("ticket-msg", "⚠️ Please choose either a Unit or a Communal entity.", false);
     return;
   }
 
@@ -2816,7 +2816,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.delUnitPhoto) deleteUnitPhoto(t.dataset.delUnitPhoto);
   if (t.dataset.editType) openTypeModal(state.ticketTypes.find((x) => x.id === t.dataset.editType));
 
-  // Communal areas
+  // Communal entities
   if (t.dataset.editAreatype) openAreaTypeModal(state.areaTypes.find((x) => x.id === t.dataset.editAreatype));
   if (t.dataset.editArea) openAreaModal(state.areas.find((x) => x.id === t.dataset.editArea));
   if (t.dataset.openArea) renderAreaDetail(t.dataset.openArea);

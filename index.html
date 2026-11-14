@@ -130,14 +130,14 @@
         <label>Logged by <input id="ticket-loggedby" readonly /></label>
         <label>Type <select id="ticket-type" required></select></label>
         <label>From / With / About / At Unit <select id="ticket-unit"></select></label>
-        <p class="muted tiny" style="margin:-6px 0 12px">— or, if it's not about a unit, pick a communal area instead —</p>
+        <p class="muted tiny" style="margin:-6px 0 12px">— or, if it's not about a unit, pick a communal entity instead —</p>
         <div class="row">
-          <label>Communal area type <select id="ticket-areatype"></select></label>
-          <label>Communal area <select id="ticket-area"></select></label>
+          <label>Communal entity type <select id="ticket-areatype"></select></label>
+          <label>Communal entity <select id="ticket-area"></select></label>
         </div>
         <label>Heading <input id="ticket-heading" required placeholder="e.g. Leaking geyser" /></label>
         <label>Detailed description <textarea id="ticket-description" rows="4"></textarea></label>
-        <p class="muted tiny">Choose <strong>either</strong> a Unit <strong>or</strong> a Communal area (not both). After saving you can attach photos, then Submit &amp; send.</p>
+        <p class="muted tiny">Choose <strong>either</strong> a Unit <strong>or</strong> a Communal entity (not both). After saving you can attach photos, then Submit &amp; send.</p>
         <p id="ticket-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
@@ -165,7 +165,7 @@
     </div>
   </div>
 
-  <!-- Communal area TYPE maintenance modal -->
+  <!-- Communal entity TYPE maintenance modal -->
   <div class="modal-overlay" id="areatype-modal">
     <div class="modal">
       <h3 id="areatype-modal-title">Add type</h3>
@@ -183,21 +183,21 @@
     </div>
   </div>
 
-  <!-- Communal AREA maintenance modal -->
+  <!-- Communal ENTITY maintenance modal -->
   <div class="modal-overlay" id="area-modal">
     <div class="modal">
-      <h3 id="area-modal-title">Add communal area</h3>
+      <h3 id="area-modal-title">Add communal entity</h3>
       <form id="area-form">
         <input type="hidden" id="area-id" />
         <label>Code <input id="area-code" required placeholder="e.g. GATE-1" /></label>
         <label>Type <select id="area-type"></select></label>
         <label>Name <input id="area-name" required placeholder="e.g. Main gate" /></label>
         <label>Description <textarea id="area-description" rows="2"></textarea></label>
-        <p class="muted tiny">After saving, open the area to add photos.</p>
+        <p class="muted tiny">After saving, open the entity to add photos.</p>
         <p id="area-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
-          <button type="submit" class="btn primary">Save area</button>
+          <button type="submit" class="btn primary">Save entity</button>
         </div>
       </form>
     </div>

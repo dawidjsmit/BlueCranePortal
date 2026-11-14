@@ -59,11 +59,11 @@ in the SQL Editor the same way:
 - **`13_conduct_rules.sql`** — a `documents` table holding the current
   conduct-rules PDF reference. Trustees upload/replace it; every signed-in
   user can read it on the new "Conduct rules" screen.
-- **`14_communal_areas.sql`** — Communal Areas: a managed type list
+- **`14_communal_areas.sql`** — Communal entities: a managed type list
   (Road/Gate/Grass/Flower Bed/Lamp pole), the areas themselves (code, type,
   name, description), and their photos. Trustees maintain; all users read.
 - **`15_ticket_communal_area.sql`** — lets a ticket be about a Unit OR a
-  Communal area: makes `tickets.unit_id` nullable, adds `communal_area_id`,
+  Communal entity: makes `tickets.unit_id` nullable, adds `communal_area_id`,
   a CHECK enforcing exactly one of the two, and updates ticket visibility
   so communal-area tickets reach trustees, the logger, and the routed role.
 
