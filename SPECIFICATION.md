@@ -60,7 +60,7 @@ The first trustee is promoted manually once via SQL.
 - **profiles** — one row per login user: `id` (= auth user), `email`,
   `full_name`, `phone`, `role` (`app_role`), `status` (`account_status`).
   Auto-created on first sign-in by a trigger.
-- **units** — `number` (unique), `notes`, `layout_id` → `unit_layouts`.
+- **units** — `number` (unique whole number, >= 1), `notes`, `layout_id` → `unit_layouts`.
 - **unit_layouts** — `code` (unique), `description`, `drawing_path` (image in
   Storage). ~5 house layouts; a maintenance screen shows which units use each.
 - **unit_members** — links a user (`profile_id`) to a `unit_id` with a

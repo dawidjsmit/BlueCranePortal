@@ -10,6 +10,9 @@
 --   * number style follows what you already have: if any existing unit
 --     is zero-padded (01, 04, ...), new ones are padded too (02, 03, 05)
 --
+--  NOTE: one-off script for when units.number was text. It will NOT work
+--  after 17_units_number_integer.sql (the column is then a number).
+--
 --  Run in: Supabase -> SQL Editor -> New query -> paste -> Run.
 -- ============================================================
 

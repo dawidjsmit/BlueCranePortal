@@ -214,9 +214,10 @@
       <h3 id="unit-modal-title">Add unit</h3>
       <form id="unit-form">
         <input type="hidden" id="unit-id" />
-        <label>Unit number / name <input id="unit-number" required placeholder="e.g. 12A" /></label>
+        <label>Unit number <input id="unit-number" type="number" inputmode="numeric" min="1" step="1" required placeholder="e.g. 12" /></label>
         <label>Layout <select id="unit-layout"></select></label>
         <label>Notes <textarea id="unit-notes" rows="2"></textarea></label>
+        <p id="unit-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
           <button type="submit" class="btn primary">Save unit</button>
