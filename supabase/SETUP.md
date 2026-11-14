@@ -72,6 +72,11 @@ in the SQL Editor the same way:
   clear message, changing nothing, if any unit number is not a plain number
   or two units would end up with the same number.
 
+- **`18_registries_trustees_gardeners_providers.sql`** — three new
+  registries: Trustees (linked to one unit), Gardeners and Service providers
+  (person or company). Visible to and editable by trustees only. Each has an
+  optional link to a login user, used by a later update.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'

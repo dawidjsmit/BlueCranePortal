@@ -86,6 +86,12 @@ The first trustee is promoted manually once via SQL.
 unit's Occupants list by combining lists (computed, not duplicated). The
 `occupants` table holds only the *other* household members.
 
+### Trustee-only registries
+- **trustees** — name, surname, cell, linked unit (at most one), service start/end, optional `profile_id`.
+- **gardeners** — name, surname, gender, ID number, date of birth, cell, email, service start/end, optional `profile_id`.
+- **service_providers** — person or company (name + surname, or company name + contact person), phone, email, service start/end, optional `profile_id`.
+A service end date that is empty means current. Readable and writable by trustees only (they hold personal data such as ID numbers).
+
 ### Photos (Supabase Storage bucket `photos`)
 
 - **unit_photos** — many per unit (`storage_path`, `caption`, `uploaded_by`).

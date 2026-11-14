@@ -62,7 +62,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] } };
 let recovering = false; // true while handling a password-reset link
 let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
@@ -331,6 +331,9 @@ function navGroups() {
         { id: "occupants", label: "Occupants", ico: "🧑‍🤝‍🧑" },
         { id: "pets", label: "Pets", ico: "🐾" },
         { id: "areas", label: "Communal areas", ico: "🌳" },
+        { id: "reg-trustees", label: "Trustees", ico: "🧑‍💼" },
+        { id: "reg-gardeners", label: "Gardeners", ico: "🌿" },
+        { id: "reg-providers", label: "Service providers", ico: "🔧" },
       ],
     });
     groups.push({
@@ -381,7 +384,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -398,6 +401,9 @@ async function loadData() {
     sb.from("communal_area_types").select("*").order("sort_order"),
     sb.from("communal_areas").select("*").order("code"),
     sb.from("communal_area_photos").select("*").order("created_at"),
+    isTrustee() ? sb.from("trustees").select("*") : Promise.resolve({ data: [] }),
+    isTrustee() ? sb.from("gardeners").select("*") : Promise.resolve({ data: [] }),
+    isTrustee() ? sb.from("service_providers").select("*") : Promise.resolve({ data: [] }),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -415,6 +421,11 @@ async function loadData() {
   state.areaTypes = areaTypes.data || [];
   state.areas = areas.data || [];
   state.areaPhotos = areaPhotos.data || [];
+  state.registry = {
+    trustees: regTrustees.data || [],
+    gardeners: regGardeners.data || [],
+    providers: regProviders.data || [],
+  };
   aiEngagementRows = []; // force AI-engagement list to reload fresh
 }
 
@@ -461,6 +472,9 @@ function showView(name) {
     areatypes: renderAreaTypes,
     areas: renderAreas,
     areadetail: renderAreaDetail,
+    "reg-trustees": () => renderRegistry("trustees"),
+    "reg-gardeners": () => renderRegistry("gardeners"),
+    "reg-providers": () => renderRegistry("providers"),
     aiengagement: renderAiEngagement,
     users: renderPeople,
   }[name];
@@ -1374,6 +1388,196 @@ $("#type-form").addEventListener("submit", async (e) => {
     : await sb.from("ticket_types").insert(payload);
   if (error) {
     setMsg("type-msg", error.message.includes("duplicate") ? "That type name already exists." : "⚠️ " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
+/* ---------- Trustee-only registries: Trustees, Gardeners, Service providers ---------- */
+// One shared list + add/edit form, driven by the definitions below.
+const GENDER_LABEL = { male: "Male", female: "Female", other: "Other" };
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const regIsCurrent = (r) => !r.service_end || r.service_end >= todayISO();
+const regStatusPill = (r) => regIsCurrent(r)
+  ? '<span class="pill approved">Current</span>'
+  : `<span class="pill rejected">Ended ${fmtDay(r.service_end)}</span>`;
+const mailLink = (e) => (e ? `<a href="mailto:${esc(e)}">${esc(e)}</a>` : "—");
+const telLink = (p) => (p ? `<a href="tel:${esc(p)}">${esc(p)}</a>` : "—");
+const providerName = (r) => (r.kind === "company" ? (r.company_name || "—") : fullName(r));
+
+const END_LABEL = "Service end date (leave empty if current)";
+const REGISTRIES = {
+  trustees: {
+    table: "trustees", title: "Trustees", ico: "🧑‍💼", noun: "trustee",
+    hint: "Trustees of the complex. A trustee lives in the complex, so is linked to the unit they live in. Leave the service end date empty while they are current.",
+    displayName: (r) => fullName(r),
+    fields: [
+      { key: "first_name", label: "Name", type: "text", required: true },
+      { key: "last_name", label: "Surname", type: "text", required: true },
+      { key: "cell", label: "Cell number", type: "tel" },
+      { key: "unit_id", label: "Lives in unit", type: "unit" },
+      { key: "service_start", label: "Service start date", type: "date", required: true },
+      { key: "service_end", label: END_LABEL, type: "date" },
+    ],
+    columns: [
+      ["Name", (r) => `<strong>${esc(fullName(r))}</strong>`],
+      ["Unit", (r) => (r.unit_id ? unitLinkChip(r.unit_id) : "—")],
+      ["Cell", (r) => telLink(r.cell)],
+    ],
+  },
+  gardeners: {
+    table: "gardeners", title: "Gardeners", ico: "🌿", noun: "gardener",
+    hint: "Visible to trustees only. ID numbers and dates of birth are personal information — they are shown on the edit form, not in this list.",
+    displayName: (r) => fullName(r),
+    fields: [
+      { key: "first_name", label: "Name", type: "text", required: true },
+      { key: "last_name", label: "Surname", type: "text", required: true },
+      { key: "gender", label: "Gender", type: "select",
+        options: [["", "— choose —"], ["male", "Male"], ["female", "Female"], ["other", "Other"]] },
+      { key: "id_number", label: "ID number", type: "text" },
+      { key: "date_of_birth", label: "Date of birth", type: "date" },
+      { key: "cell", label: "Cell number", type: "tel" },
+      { key: "email", label: "Email address", type: "email" },
+      { key: "service_start", label: "Service start date", type: "date", required: true },
+      { key: "service_end", label: END_LABEL, type: "date" },
+    ],
+    columns: [
+      ["Name", (r) => `<strong>${esc(fullName(r))}</strong>`],
+      ["Gender", (r) => esc(GENDER_LABEL[r.gender] || "—")],
+      ["Cell", (r) => telLink(r.cell)],
+      ["Email", (r) => mailLink(r.email)],
+    ],
+  },
+  providers: {
+    table: "service_providers", title: "Service providers", ico: "🔧", noun: "service provider",
+    hint: "Companies or individuals who provide services to the complex. Leave the service end date empty while they are current.",
+    displayName: (r) => providerName(r),
+    fields: [
+      { key: "kind", label: "This service provider is a", type: "select", required: true, default: "company",
+        options: [["company", "Company"], ["person", "Person"]] },
+      { key: "first_name", label: "Name", type: "text", required: true, showIf: (v) => v.kind === "person" },
+      { key: "last_name", label: "Surname", type: "text", required: true, showIf: (v) => v.kind === "person" },
+      { key: "company_name", label: "Company name", type: "text", required: true, showIf: (v) => v.kind === "company" },
+      { key: "contact_person", label: "Contact person", type: "text", showIf: (v) => v.kind === "company" },
+      { key: "phone", label: "Phone number", type: "tel" },
+      { key: "email", label: "Email address", type: "email" },
+      { key: "service_start", label: "Service start date", type: "date", required: true },
+      { key: "service_end", label: END_LABEL, type: "date" },
+    ],
+    columns: [
+      ["Name", (r) => `<strong>${esc(providerName(r))}</strong>`],
+      ["Type", (r) => (r.kind === "company" ? "Company" : "Person")],
+      ["Contact person", (r) => esc(r.contact_person || "—")],
+      ["Phone", (r) => telLink(r.phone)],
+      ["Email", (r) => mailLink(r.email)],
+    ],
+  },
+};
+
+function renderRegistry(key) {
+  const cfg = REGISTRIES[key];
+  // Current first, then by name.
+  const rows = (state.registry[key] || []).slice().sort((a, b) =>
+    (regIsCurrent(b) - regIsCurrent(a)) || cfg.displayName(a).localeCompare(cfg.displayName(b)));
+  const head = [...cfg.columns.map((c) => c[0]), "Service start", "Status", ""];
+  const body = rows.map((r) => `<tr class="${regIsCurrent(r) ? "" : "inactive-row"}">
+      ${cfg.columns.map((c) => `<td>${c[1](r)}</td>`).join("")}
+      <td>${fmtDay(r.service_start)}</td>
+      <td>${regStatusPill(r)}</td>
+      <td style="text-align:right"><button class="btn ghost small" data-reg-edit="${key}" data-id="${r.id}">Edit</button></td>
+    </tr>`).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>${cfg.ico} ${cfg.title}</h2>
+        <button class="btn primary small" data-reg-add="${key}">+ Add ${cfg.noun}</button></div>
+      <p class="muted tiny">${cfg.hint}</p>
+      <div class="table-wrap"><table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+        <tbody>${body || `<tr><td colspan="${head.length}" class="empty">Nothing here yet — use the Add button.</td></tr>`}</tbody>
+      </table></div>
+    </div>`;
+}
+
+let regCtx = { key: null, id: null };
+
+function regFieldHtml(f, rec) {
+  const v = rec?.[f.key] ?? f.default ?? "";
+  const id = `reg-f-${f.key}`;
+  let input;
+  if (f.type === "select") {
+    input = `<select id="${id}">${f.options.map(([val, label]) =>
+      `<option value="${val}" ${String(v) === val ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`;
+  } else if (f.type === "unit") {
+    input = `<select id="${id}"><option value="">— none —</option>${state.units.map((u) =>
+      `<option value="${u.id}" ${v === u.id ? "selected" : ""}>Unit ${esc(u.number)}</option>`).join("")}</select>`;
+  } else {
+    input = `<input id="${id}" type="${f.type}" value="${esc(v)}" autocomplete="off" />`;
+  }
+  return `<label data-reg-field="${f.key}">${esc(f.label)}${f.required ? " *" : ""} ${input}</label>`;
+}
+
+function regValues() {
+  const cfg = REGISTRIES[regCtx.key];
+  const out = {};
+  cfg.fields.forEach((f) => { const el = $("#reg-f-" + f.key); out[f.key] = el ? el.value.trim() : ""; });
+  return out;
+}
+const regFieldVisible = (f, vals) => (f.showIf ? f.showIf(vals) : true);
+
+// Show/hide fields that depend on another field (e.g. person vs company).
+function applyRegVisibility() {
+  const cfg = REGISTRIES[regCtx.key];
+  const vals = regValues();
+  cfg.fields.forEach((f) => {
+    const wrap = document.querySelector(`[data-reg-field="${f.key}"]`);
+    if (wrap) wrap.hidden = !regFieldVisible(f, vals);
+  });
+}
+
+function openRegModal(key, id) {
+  const cfg = REGISTRIES[key];
+  const rec = id ? (state.registry[key] || []).find((r) => r.id === id) : null;
+  regCtx = { key, id: rec ? rec.id : null };
+  $("#reg-modal-title").textContent = (rec ? "Edit " : "Add ") + cfg.noun;
+  $("#reg-fields").innerHTML = cfg.fields.map((f) => regFieldHtml(f, rec)).join("");
+  applyRegVisibility();
+  $("#reg-msg").textContent = "";
+  $("#reg-modal").classList.add("active");
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target.id && e.target.id.startsWith("reg-f-") && regCtx.key) applyRegVisibility();
+});
+
+$("#reg-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cfg = REGISTRIES[regCtx.key];
+  const vals = regValues();
+  const payload = {};
+  for (const f of cfg.fields) {
+    const visible = regFieldVisible(f, vals);
+    const val = vals[f.key];
+    if (visible && f.required && !val) {
+      setMsg("reg-msg", `⚠️ ${f.label.replace(/\s*\(.*\)$/, "")} is required.`, false);
+      return;
+    }
+    if (visible && f.type === "email" && val && !/^\S+@\S+\.\S+$/.test(val)) {
+      setMsg("reg-msg", "⚠️ Please enter a valid email address.", false);
+      return;
+    }
+    payload[f.key] = visible && val !== "" ? val : null;   // hidden fields are cleared
+  }
+  if (payload.service_end && payload.service_start && payload.service_end < payload.service_start) {
+    setMsg("reg-msg", "⚠️ The service end date cannot be before the start date.", false);
+    return;
+  }
+  const { error } = regCtx.id
+    ? await sb.from(cfg.table).update(payload).eq("id", regCtx.id)
+    : await sb.from(cfg.table).insert(payload);
+  if (error) {
+    setMsg("reg-msg", error.message.includes("duplicate")
+      ? "⚠️ A record with that ID number already exists." : "⚠️ " + error.message, false);
     return;
   }
   closeOverlays();
@@ -2375,6 +2579,12 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editArea) openAreaModal(state.areas.find((x) => x.id === t.dataset.editArea));
   if (t.dataset.openArea) renderAreaDetail(t.dataset.openArea);
   if (t.dataset.delAreaPhoto) deleteAreaPhoto(t.dataset.delAreaPhoto);
+
+  // Trustee registries (Trustees / Gardeners / Service providers)
+  const regAdd = t.closest("[data-reg-add]");
+  if (regAdd) openRegModal(regAdd.dataset.regAdd, null);
+  const regEdit = t.closest("[data-reg-edit]");
+  if (regEdit) openRegModal(regEdit.dataset.regEdit, regEdit.dataset.id);
 
   // Ask-the-Rules: select a historical question
   const histBtn = t.closest("[data-ask-select]");
