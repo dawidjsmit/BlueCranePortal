@@ -367,7 +367,7 @@ function navGroups() {
         { id: "tenants", label: "Tenants", ico: "🔑" },
         { id: "occupants", label: "Occupants", ico: "🧑‍🤝‍🧑" },
         { id: "pets", label: "Pets", ico: "🐾" },
-        { id: "areas", label: "Communal entities", ico: "🌳" },
+        { id: "areas", label: "Communal entities", ico: "🧩" },
         { id: "reg-trustees", label: "Trustees", ico: "🧑‍💼" },
         { id: "reg-gardeners", label: "Gardeners", ico: "🧑‍🌾" },
         { id: "reg-providers", label: "Service providers", ico: "🔧" },
@@ -1545,6 +1545,7 @@ function renderPetsList() {
 function renderTicketTypes() {
   const rows = state.ticketTypes.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
     <td><strong>${esc(tt.name)}</strong></td>
+    <td class="muted">${esc(tt.description || "—")}</td>
     <td>${tt.sort_order}</td>
     <td>${tt.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Hidden</span>'}</td>
     <td style="text-align:right"><button class="btn ghost small" data-edit-type="${tt.id}">Edit</button></td>
@@ -1555,8 +1556,8 @@ function renderTicketTypes() {
         <button class="btn primary small" id="add-type-btn">+ Add type</button></div>
       <p class="muted tiny">The list of types users choose from when logging a ticket.</p>
       <div class="table-wrap"><table><thead><tr>
-        <th>Name</th><th>Order</th><th>Status</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No types yet.</td></tr>`}</tbody></table></div>
+        <th>Name</th><th>Description</th><th>Order</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No types yet.</td></tr>`}</tbody></table></div>
     </div>`;
   $("#add-type-btn").addEventListener("click", () => openTypeModal(null));
 }
@@ -1565,6 +1566,7 @@ function openTypeModal(type) {
   $("#type-modal-title").textContent = type ? "Edit type" : "Add type";
   $("#type-id").value = type?.id || "";
   $("#type-name").value = type?.name || "";
+  $("#type-description").value = type?.description || "";
   $("#type-order").value = type?.sort_order ?? state.ticketTypes.length + 1;
   $("#type-active").checked = type ? !!type.active : true;
   $("#type-msg").textContent = "";
@@ -1576,6 +1578,7 @@ $("#type-form").addEventListener("submit", async (e) => {
   const id = $("#type-id").value;
   const payload = {
     name: $("#type-name").value.trim(),
+    description: $("#type-description").value.trim() || null,
     sort_order: parseInt($("#type-order").value, 10) || 0,
     active: $("#type-active").checked,
   };
@@ -1838,8 +1841,35 @@ $("#areatype-form").addEventListener("submit", async (e) => {
 });
 
 /* ---------- Communal entities (trustee) ---------- */
+// Filter for the Communal entities list ("" = all, "none" = no type, else a type id).
+// Kept between visits so it survives adding/editing an entity.
+let areaTypeFilter = "";
+
+// Entities matching the chosen type filter.
+function filterAreasByType(areas, filter) {
+  if (!filter) return areas;
+  if (filter === "none") return areas.filter((a) => !a.type_id);
+  return areas.filter((a) => a.type_id === filter);
+}
+
+// Dropdown options: every active type, plus any hidden type still in use,
+// each with how many entities it has.
+function areaTypeFilterOptions(areas, types) {
+  const count = (id) => areas.filter((a) => a.type_id === id).length;
+  const opts = [{ value: "", label: `All types (${areas.length})` }];
+  types.filter((t) => t.active || count(t.id) > 0)
+    .forEach((t) => opts.push({ value: t.id, label: `${t.name} (${count(t.id)})` }));
+  const untyped = areas.filter((a) => !a.type_id).length;
+  if (untyped) opts.push({ value: "none", label: `No type (${untyped})` });
+  return opts;
+}
+
 function renderAreas() {
-  const rows = state.areas.map((a) => {
+  const opts = areaTypeFilterOptions(state.areas, state.areaTypes);
+  if (!opts.some((o) => o.value === areaTypeFilter)) areaTypeFilter = "";  // type removed
+  const shown = filterAreasByType(state.areas, areaTypeFilter);
+
+  const rows = shown.map((a) => {
     const photos = state.areaPhotos.filter((p) => p.area_id === a.id).length;
     return `<tr>
       <td><strong>${esc(a.code)}</strong></td>
@@ -1850,15 +1880,32 @@ function renderAreas() {
         <button class="btn ghost small" data-open-area="${a.id}">Open</button></td>
     </tr>`;
   }).join("");
+
+  const empty = state.areas.length
+    ? "No communal entities of this type."
+    : "No communal entities yet.";
+
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🌳 Communal entities</h2>
+      <div class="panel-head"><h2>🧩 Communal entities</h2>
         <button class="btn primary small" id="add-area-btn">+ Add entity</button></div>
+      <div class="filters">
+        <label>Type
+          <select id="area-type-filter">
+            ${opts.map((o) => `<option value="${o.value}" ${o.value === areaTypeFilter ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+          </select>
+        </label>
+        ${areaTypeFilter ? `<span class="muted tiny">Showing ${shown.length} of ${state.areas.length}</span>` : ""}
+      </div>
       <div class="table-wrap"><table><thead><tr>
         <th>Code</th><th>Name</th><th>Type</th><th>Photos</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No communal entities yet.</td></tr>`}</tbody></table></div>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">${empty}</td></tr>`}</tbody></table></div>
     </div>`;
   $("#add-area-btn").addEventListener("click", () => openAreaModal(null));
+  $("#area-type-filter").addEventListener("change", (e) => {
+    areaTypeFilter = e.target.value;
+    renderAreas();
+  });
 }
 
 function openAreaModal(area) {
@@ -1907,7 +1954,7 @@ function renderAreaDetail(areaId) {
   $("#main").innerHTML = `
     <button class="link-btn" data-back-view="areas">← Back to communal entities</button>
     <div class="panel">
-      <div class="panel-head"><h2>🌳 ${esc(a.name)}</h2>
+      <div class="panel-head"><h2>🧩 ${esc(a.name)}</h2>
         <button class="btn ghost small" data-edit-area="${a.id}">Edit</button></div>
       <dl class="detail-grid">
         <dt>Code</dt><dd>${esc(a.code)}</dd>
