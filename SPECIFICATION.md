@@ -121,6 +121,11 @@ Ticket status enum: `create · sent · busy · waiting · complete · cancelled 
 
 ---
 
+> Naming: screens say "Communal entity"; the database still uses the original
+> names (`communal_areas`, `communal_area_types`, `communal_area_photos`,
+> `tickets.communal_area_id`). This is intentional — renaming tables adds risk
+> with no benefit to users.
+
 ## 4. Permissions (enforced by RLS + mirrored in the UI)
 
 For a user acting on a unit **they are linked to**:
