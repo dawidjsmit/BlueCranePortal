@@ -220,6 +220,14 @@ Ticket types, Users.
 
 ---
 
+## 8b. Housekeeping
+
+- **Image resizing:** every image upload is scaled down in the browser before
+  it is stored (photos: longest side 1600 px, JPEG quality 0.82; layout
+  drawings: 2400 px, quality 0.9). PDFs and other files are stored as-is.
+- **Keep-alive:** a daily GitHub Actions workflow runs one small database
+  query so the free Supabase project is not paused for inactivity.
+
 ## 9. Possible future enhancements
 
 - WhatsApp / email quick-reply links per contact.
