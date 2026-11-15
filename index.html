@@ -169,6 +169,83 @@
     </div>
   </div>
 
+  <!-- Gardening task maintenance modal -->
+  <div class="modal-overlay" id="gtask-modal">
+    <div class="modal">
+      <h3 id="gtask-modal-title">Add gardening task</h3>
+      <form id="gtask-form">
+        <input type="hidden" id="gtask-id" />
+        <label>Name <input id="gtask-name" required placeholder="e.g. Cut grass" /></label>
+        <label>Description <textarea id="gtask-description" rows="2" placeholder="e.g. Mow and edge the lawn"></textarea></label>
+        <p id="gtask-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Gardening Report: add (several tasks at once) / edit one line -->
+  <div class="modal-overlay" id="garden-modal">
+    <div class="modal wide">
+      <h3 id="garden-modal-title">Add to the gardening report</h3>
+      <form id="garden-form" novalidate>
+        <div class="row">
+          <label>Action date <input id="garden-date" type="date" /></label>
+          <div style="flex:1;display:flex;align-items:flex-end;margin-bottom:12px">
+            <button type="button" class="btn ghost small" id="garden-last" title="Tick the same gardeners, units and entities as your last report">↺ Same as my last report</button>
+          </div>
+        </div>
+        <label>Gardening task(s)</label>
+        <div id="garden-tasks"></div>
+        <p class="muted tiny" id="garden-tasks-hint" style="margin:-6px 0 12px">Tick every task done at the same places. Each task becomes its own report line.</p>
+        <label>Description (optional) <textarea id="garden-description" rows="2"></textarea></label>
+        <label>Gardeners</label>
+        <div id="garden-gardeners"></div>
+        <div class="checklist-head"><label>Units</label>
+          <span><button type="button" class="link-btn" data-gr-all="gr-unit">All</button> · <button type="button" class="link-btn" data-gr-none="gr-unit">None</button></span></div>
+        <div id="garden-units"></div>
+        <div class="checklist-head"><label>Communal entities</label>
+          <span><button type="button" class="link-btn" data-gr-all="gr-area">All</button> · <button type="button" class="link-btn" data-gr-none="gr-area">None</button></span></div>
+        <div id="garden-areas"></div>
+        <p id="garden-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary" id="garden-save">Save report line</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Gardening Report: line details + comments -->
+  <div class="modal-overlay" id="grc-modal">
+    <div class="modal wide">
+      <div class="modal-close-bar"><button type="button" class="modal-close" data-close title="Close" aria-label="Close">✕ Close</button></div>
+      <div id="grc-head"></div>
+      <h4 style="margin:14px 0 6px">Comments</h4>
+      <div class="fb-compose">
+        <textarea id="grc-body" rows="2" placeholder="Add a comment…"></textarea>
+        <div class="fb-compose-bar"><button type="button" class="btn primary small fb-post" id="grc-post">Post comment</button></div>
+      </div>
+      <p id="grc-msg" class="login-msg"></p>
+      <div id="grc-list" class="grc-list"></div>
+    </div>
+  </div>
+
+  <!-- Gardening Report: delete confirmation -->
+  <div class="modal-overlay" id="grdel-modal">
+    <div class="modal">
+      <h3>Delete report line</h3>
+      <p id="grdel-text"></p>
+      <p id="grdel-msg" class="login-msg"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+        <button type="button" class="btn danger" id="grdel-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Plan status maintenance modal -->
   <div class="modal-overlay" id="planstatus-modal">
     <div class="modal">
