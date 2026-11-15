@@ -73,7 +73,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], areaGroups: [], projects: [], projectStatuses: [], projectUnits: [], projectAreas: [], projectProviders: [], planItems: [], planStatuses: [], planItemProjects: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], areaGroups: [], projects: [], projectStatuses: [], projectUnits: [], projectAreas: [], projectProviders: [], planItems: [], planStatuses: [], planItemProjects: [], gardenTasks: [] };
 let recovering = false; // true while handling a password-reset link
 let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
@@ -371,12 +371,13 @@ function navGroups() {
     { items: [
       { id: "dashboard", label: "Dashboard", ico: "🏠" },
     ]},
-    { title: "Tickets", items: [
+    { title: "Daily Working", items: [
       ...(canCreateTicket() ? [{ id: "ticket-create", label: "Create a Ticket", ico: "➕" }] : []),
       { id: "ticket-mine", label: "My Tickets", ico: "🎟️" },
       ...(isResident() ? [{ id: "ticket-unit", label: "My Unit's Tickets", ico: "🏢" }] : []),
       { id: "ticket-feedback", label: "Needs my Feedback", ico: "⏳" },
       ...(isTrustee() ? [{ id: "ticket-all", label: "All Tickets", ico: "📋" }] : []),
+      ...(isTrustee() || me.role === "gardener" ? [{ id: "garden", label: "Gardening Report", ico: "🌱" }] : []),
     ]},
     { title: "Conduct Rules", items: [
       { id: "conduct", label: "Master Document", ico: "📖" },
@@ -406,6 +407,7 @@ function navGroups() {
         { id: "layouts", label: "Layouts", ico: "📐" },
         { id: "areagroups", label: "Communal entity groupings", ico: "🗂️" },
         { id: "areatypes", label: "Communal entity types", ico: "🏷️" },
+        { id: "gardentasks", label: "Gardening tasks", ico: "🧰" },
         { id: "planstatuses", label: "Plan statuses", ico: "🚩" },
         { id: "projectstatuses", label: "Project statuses", ico: "📌" },
         { id: "ticketstatuses", label: "Ticket statuses", ico: "🚦" },
@@ -453,7 +455,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups, projects, projectStatuses, projectUnits, projectAreas, projectProviders, planItems, planStatuses, planItemProjects] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups, projects, projectStatuses, projectUnits, projectAreas, projectProviders, planItems, planStatuses, planItemProjects, gardenTasks] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -487,6 +489,8 @@ async function loadData() {
     isTrustee() ? sb.from("plan_items").select("*") : Promise.resolve({ data: [] }),
     isTrustee() ? sb.from("plan_statuses").select("*") : Promise.resolve({ data: [] }),
     isTrustee() ? sb.from("plan_item_projects").select("*") : Promise.resolve({ data: [] }),
+    // Gardening tasks (trustees + gardeners; empty until migration 35 is run).
+    isTrustee() || me.role === "gardener" ? sb.from("gardening_tasks").select("*") : Promise.resolve({ data: [] }),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -521,6 +525,8 @@ async function loadData() {
   state.planStatuses = (planStatuses.data || []).slice().sort((a, b) =>
     String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
   state.planItemProjects = planItemProjects.data || [];
+  state.gardenTasks = (gardenTasks.data || []).slice().sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
   state.areaPhotos = areaPhotos.data || [];
   state.registry = {
     trustees: regTrustees.data || [],
@@ -634,6 +640,8 @@ function showView(name) {
     projectstatuses: renderProjectStatuses,
     plan: renderPlan,
     planstatuses: renderPlanStatuses,
+    garden: renderGarden,
+    gardentasks: renderGardenTasks,
     activity: renderActivity,
   }[name];
   if (render) render();
@@ -2221,6 +2229,366 @@ $("#plan-form").addEventListener("submit", async (e) => {
   refreshActiveView();
 });
 
+/* ---------- Gardening tasks (trustee maintenance) ---------- */
+function renderGardenTasks() {
+  const rows = state.gardenTasks.map((g) => `<tr>
+    <td><strong>${esc(g.name)}</strong></td>
+    <td class="muted">${esc(g.description || "—")}</td>
+    <td style="text-align:right"><button class="btn ghost small" data-edit-gtask="${g.id}">Edit</button></td>
+  </tr>`).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🧰 Gardening tasks</h2>
+        <button class="btn primary small" id="add-gtask-btn">+ Add task</button></div>
+      <p class="muted tiny">The typical tasks gardeners choose from on the Gardening Report.</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Name</th><th>Description</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="3" class="empty">No tasks yet. Run supabase/35_gardening_report.sql first.</td></tr>`}</tbody></table></div>
+    </div>`;
+  $("#add-gtask-btn").addEventListener("click", () => openGardenTaskModal(null));
+}
+
+function openGardenTaskModal(g) {
+  $("#gtask-modal-title").textContent = g ? "Edit gardening task" : "Add gardening task";
+  $("#gtask-id").value = g?.id || "";
+  $("#gtask-name").value = g?.name || "";
+  $("#gtask-description").value = g?.description || "";
+  $("#gtask-msg").textContent = "";
+  $("#gtask-modal").classList.add("active");
+}
+
+$("#gtask-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#gtask-id").value;
+  const payload = { name: $("#gtask-name").value.trim(), description: $("#gtask-description").value.trim() || null };
+  if (!payload.name) { setMsg("gtask-msg", "\u26a0\ufe0f Please enter a name.", false); return; }
+  const { error } = id
+    ? await sb.from("gardening_tasks").update(payload).eq("id", id)
+    : await sb.from("gardening_tasks").insert(payload);
+  if (error) {
+    setMsg("gtask-msg", error.message.includes("duplicate") ? "That task already exists."
+      : /gardening_tasks/.test(error.message) ? "\u26a0\ufe0f Run supabase/35_gardening_report.sql first."
+      : "\u26a0\ufe0f " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
+/* ---------- Gardening Report ---------- */
+// Lists the screen needs (all units + gardener names), loaded via a database
+// function because gardeners can't read the full registries.
+let gardenLookup = null;        // { units: [{id, number}], gardeners: [{id, name, current, profile_id}] }
+let gardenFilter = null;        // { from, to, gardener, task }
+let gardenRows = [];            // report lines for the current filter
+let gardenEditing = null;       // the line being edited (null = adding)
+let gardenCommentsFor = null;   // report id whose comments are open
+let gardenDeleting = null;
+
+const gardenTaskName = (id) => state.gardenTasks.find((t) => t.id === id)?.name || "—";
+const gardenerName = (id) => gardenLookup?.gardeners.find((g) => g.id === id)?.name || "—";
+const myGardenerId = () => gardenLookup?.gardeners.find((g) => g.profile_id === me.id)?.id || null;
+const todayISO_ = () => isoDay(new Date());
+function gardenUnitLabel(id) {
+  const u = gardenLookup?.units.find((x) => x.id === id);
+  return u ? unitChoiceLabel(u) : "Unit ?";
+}
+// Gardeners: only today's lines that weren't captured late. Trustees: any line.
+function canEditGarden(r) {
+  return isTrustee() || (me.role === "gardener" && r.action_date === todayISO_() && !r.captured_late);
+}
+const rowIds = (r, rel, key) => (r[rel] || []).map((x) => x[key]);
+
+async function ensureGardenLookup() {
+  if (gardenLookup) return true;
+  const { data, error } = await sb.rpc("garden_lookups");
+  if (error) {
+    $("#main").innerHTML = `<div class="panel"><div class="empty">⚠️ ${esc(/garden_lookups/.test(error.message)
+      ? "The Gardening Report isn't set up yet — run supabase/35_gardening_report.sql (see SETUP.md)." : error.message)}</div></div>`;
+    return false;
+  }
+  gardenLookup = data || { units: [], gardeners: [] };
+  return true;
+}
+
+async function renderGarden() {
+  if (!(await ensureGardenLookup())) return;
+  if (!gardenFilter) { const d = defaultActivityFilter(); gardenFilter = { from: d.from, to: d.to, gardener: "", task: "" }; }
+  const f = gardenFilter;
+  const gOpts = `<option value="">All gardeners</option>` + gardenLookup.gardeners.map((g) =>
+    `<option value="${g.id}" ${f.gardener === g.id ? "selected" : ""}>${esc(g.name)}${g.current ? "" : " (former)"}</option>`).join("");
+  const tOpts = `<option value="">All tasks</option>` + state.gardenTasks.map((t) =>
+    `<option value="${t.id}" ${f.task === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("");
+
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🌱 Gardening Report</h2>
+        <button class="btn primary small" id="garden-add-btn">+ Add report</button></div>
+      <p class="muted tiny">What the gardeners did. Gardeners can change or delete today's lines; lines for earlier dates are locked${isTrustee() ? " (trustees can still change them)" : ""}. Lines captured for an earlier date are marked ⏱.</p>
+      <div class="filters">
+        <label>Date from <input type="date" id="gr-from" value="${esc(f.from)}" max="${todayISO_()}" /></label>
+        <label>Date to <input type="date" id="gr-to" value="${esc(f.to)}" max="${todayISO_()}" /></label>
+        <label>Gardener <select id="gr-gardener">${gOpts}</select></label>
+        <label>Task <select id="gr-task">${tOpts}</select></label>
+      </div>
+      <div id="gr-list"><div class="empty">Loading…</div></div>
+    </div>`;
+  $("#garden-add-btn").addEventListener("click", () => openGardenModal(null));
+  const onChange = () => {
+    gardenFilter = { from: $("#gr-from").value, to: $("#gr-to").value, gardener: $("#gr-gardener").value, task: $("#gr-task").value };
+    loadGardenList();
+  };
+  ["#gr-from", "#gr-to", "#gr-gardener", "#gr-task"].forEach((s) => $(s).addEventListener("change", onChange));
+  loadGardenList();
+}
+
+async function loadGardenList() {
+  const f = gardenFilter;
+  if (f.from && f.to && f.from > f.to) { $("#gr-list").innerHTML = `<div class="empty">"Date from" is after "Date to".</div>`; return; }
+  let q = sb.from("garden_reports")
+    .select("*, garden_report_gardeners(gardener_id), garden_report_units(unit_id), garden_report_areas(area_id), garden_report_comments(id)")
+    .order("action_date", { ascending: false }).order("created_at", { ascending: false }).limit(1000);
+  if (f.from) q = q.gte("action_date", f.from);
+  if (f.to) q = q.lte("action_date", f.to);
+  if (f.task) q = q.eq("task_id", f.task);
+  const { data, error } = await q;
+  if (gardenFilter !== f || !$("#gr-list")) return;
+  if (error) { $("#gr-list").innerHTML = `<div class="empty">⚠️ ${esc(error.message)}</div>`; return; }
+  gardenRows = (data || []).filter((r) => !f.gardener || rowIds(r, "garden_report_gardeners", "gardener_id").includes(f.gardener));
+  renderGardenRows();
+}
+
+function chipList(labels, max = 12) {
+  if (!labels.length) return `<span class="muted">—</span>`;
+  const shown = labels.slice(0, max).map((l) => `<span class="chip">${esc(l)}</span>`).join(" ");
+  return shown + (labels.length > max ? ` <span class="muted tiny" title="${esc(labels.slice(max).join(", "))}">+${labels.length - max} more</span>` : "");
+}
+
+function renderGardenRows() {
+  const rows = gardenRows.map((r) => {
+    const units = rowIds(r, "garden_report_units", "unit_id").map((id) => gardenLookup.units.find((u) => u.id === id))
+      .filter(Boolean).sort(unitCompare).map(unitChoiceLabel);
+    const areas = areasByGrouping(rowIds(r, "garden_report_areas", "area_id").map((id) => state.areas.find((a) => a.id === id)).filter(Boolean))
+      .map((a) => `${a.code} — ${a.name}`);
+    const gardeners = rowIds(r, "garden_report_gardeners", "gardener_id").map(gardenerName).sort();
+    const nComments = (r.garden_report_comments || []).length;
+    const late = r.captured_late
+      ? `<div><span class="late-badge" title="Captured on ${esc(fmtDateTimeFull(r.created_at))}${r.created_by_name ? " by " + esc(r.created_by_name) : ""}">⏱ captured later</span></div>` : "";
+    const edit = canEditGarden(r);
+    return `<tr>
+      <td style="white-space:nowrap">${fmtDay(r.action_date)}${late}</td>
+      <td><strong>${esc(gardenTaskName(r.task_id))}</strong>${r.description ? `<div class="muted tiny">${esc(r.description)}</div>` : ""}</td>
+      <td>${chipList(gardeners)}</td>
+      <td>${chipList(units)}</td>
+      <td>${chipList(areas, 6)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="icon-btn" data-gr-comments="${r.id}" title="Comments" aria-label="Comments">💬${nComments ? `<span class="tiny">${nComments}</span>` : ""}</button>
+        <button class="icon-btn" data-gr-copy="${r.id}" title="Use as a starting point for a new report" aria-label="Copy">📋</button>
+        ${edit ? `<button class="icon-btn" data-gr-edit="${r.id}" title="Edit" aria-label="Edit">✏️</button>
+        <button class="icon-btn" data-gr-delete="${r.id}" title="Delete" aria-label="Delete">🗑️</button>` : ""}
+      </td>
+    </tr>`;
+  }).join("");
+  $("#gr-list").innerHTML = `
+    <p class="muted tiny">${gardenRows.length} line${gardenRows.length === 1 ? "" : "s"}</p>
+    <div class="table-wrap"><table class="garden-grid"><thead><tr>
+      <th>Date</th><th>Task</th><th>Gardeners</th><th>Units</th><th>Communal entities</th><th></th>
+    </tr></thead><tbody>${rows || `<tr><td colspan="6" class="empty">Nothing reported in this period.</td></tr>`}</tbody></table></div>`;
+}
+
+/* --- Add / edit form --- */
+function gardenChecklist(name, items, selected, cls = "") {
+  if (!items.length) return `<p class="muted tiny">None available.</p>`;
+  return `<div class="checklist ${cls}">` + items.map((it) =>
+    `<label class="check"><input type="checkbox" name="${name}" value="${it.value}" ${selected.includes(it.value) ? "checked" : ""} /> ${esc(it.label)}</label>`).join("") + `</div>`;
+}
+const gardenChecked = (name) => [...$$(`#garden-form input[name="${name}"]:checked`)].map((i) => i.value);
+
+// prefill: { date, tasks[], description, gardeners[], units[], areas[] }
+function openGardenModal(row, prefill = null) {
+  gardenEditing = row;
+  const src = row ? {
+    date: row.action_date, tasks: [row.task_id], description: row.description || "",
+    gardeners: rowIds(row, "garden_report_gardeners", "gardener_id"),
+    units: rowIds(row, "garden_report_units", "unit_id"), areas: rowIds(row, "garden_report_areas", "area_id"),
+  } : (prefill || { date: todayISO_(), tasks: [], description: "", gardeners: myGardenerId() ? [myGardenerId()] : [], units: [], areas: [] });
+
+  $("#garden-modal-title").textContent = row ? "Edit report line" : "Add to the gardening report";
+  $("#garden-date").value = src.date;
+  $("#garden-date").max = todayISO_();
+  $("#garden-date").readOnly = !!row && !isTrustee();   // gardeners can't move a line to another date
+  $("#garden-description").value = src.description;
+
+  // Tasks: tick several when adding (one line each); one dropdown when editing.
+  $("#garden-tasks").innerHTML = row
+    ? `<select id="garden-task-one">${state.gardenTasks.map((t) => `<option value="${t.id}" ${t.id === row.task_id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select>`
+    : gardenChecklist("gr-task", state.gardenTasks.map((t) => ({ value: t.id, label: t.name })), src.tasks, "tasks");
+  $("#garden-tasks-hint").hidden = !!row;
+
+  const gardeners = gardenLookup.gardeners.filter((g) => g.current || src.gardeners.includes(g.id));
+  $("#garden-gardeners").innerHTML = gardenChecklist("gr-gardener",
+    gardeners.map((g) => ({ value: g.id, label: g.name + (g.current ? "" : " (former)") })), src.gardeners, "tasks");
+  $("#garden-units").innerHTML = gardenChecklist("gr-unit",
+    gardenLookup.units.slice().sort(unitCompare).map((u) => ({ value: u.id, label: unitChoiceLabel(u).replace("Unit ", "") })), src.units, "units");
+  $("#garden-areas").innerHTML = gardenChecklist("gr-area",
+    areasByGrouping(state.areas).map((a) => ({ value: a.id, label: areaFullLabel(a) })), src.areas);
+  $("#garden-last").hidden = !!row;
+  $("#garden-msg").textContent = "";
+  updateGardenSaveLabel();
+  $("#garden-modal").classList.add("active");
+}
+
+function updateGardenSaveLabel() {
+  if (gardenEditing) { $("#garden-save").textContent = "Save"; return; }
+  const n = gardenChecked("gr-task").length;
+  $("#garden-save").textContent = n > 1 ? `Save ${n} report lines` : "Save report line";
+}
+
+// "Same as my last report": copy gardeners, units and entities from my latest line.
+async function gardenUseLast() {
+  const { data } = await sb.from("garden_reports")
+    .select("*, garden_report_gardeners(gardener_id), garden_report_units(unit_id), garden_report_areas(area_id)")
+    .eq("created_by", me.id).order("created_at", { ascending: false }).limit(1);
+  const last = data && data[0];
+  if (!last) { setMsg("garden-msg", "You haven't captured a report yet.", false); return; }
+  const set = (name, ids) => $$(`#garden-form input[name="${name}"]`).forEach((i) => { i.checked = ids.includes(i.value); });
+  set("gr-gardener", rowIds(last, "garden_report_gardeners", "gardener_id"));
+  set("gr-unit", rowIds(last, "garden_report_units", "unit_id"));
+  set("gr-area", rowIds(last, "garden_report_areas", "area_id"));
+  setMsg("garden-msg", `Copied the gardeners, units and entities from your report of ${fmtDay(last.action_date)}.`, true);
+}
+
+document.addEventListener("click", (e) => {
+  const all = e.target.closest("[data-gr-all]");
+  if (all) $$(`#garden-form input[name="${all.dataset.grAll}"]`).forEach((i) => { i.checked = true; });
+  const none = e.target.closest("[data-gr-none]");
+  if (none) $$(`#garden-form input[name="${none.dataset.grNone}"]`).forEach((i) => { i.checked = false; });
+  if (e.target.id === "garden-last") gardenUseLast();
+});
+document.addEventListener("change", (e) => {
+  if (e.target.name === "gr-task") updateGardenSaveLabel();
+});
+
+$("#garden-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const date = $("#garden-date").value;
+  const tasks = gardenEditing ? [$("#garden-task-one").value] : gardenChecked("gr-task");
+  const gardeners = gardenChecked("gr-gardener");
+  if (!date) { setMsg("garden-msg", "\u26a0\ufe0f Please choose the action date.", false); return; }
+  if (date > todayISO_()) { setMsg("garden-msg", "\u26a0\ufe0f You can't report work for a future date.", false); return; }
+  if (!tasks.length || !tasks[0]) { setMsg("garden-msg", "\u26a0\ufe0f Please tick at least one task.", false); return; }
+  if (!gardeners.length) { setMsg("garden-msg", "\u26a0\ufe0f Please tick at least one gardener.", false); return; }
+  const btn = $("#garden-save"); btn.disabled = true;
+  const { data, error } = await sb.rpc("save_garden_reports", {
+    p_id: gardenEditing ? gardenEditing.id : null, p_date: date, p_tasks: tasks,
+    p_description: $("#garden-description").value.trim(), p_gardeners: gardeners,
+    p_units: gardenChecked("gr-unit"), p_areas: gardenChecked("gr-area"),
+  });
+  btn.disabled = false;
+  if (error) { setMsg("garden-msg", "\u26a0\ufe0f " + error.message, false); return; }
+  // Make sure the saved date is inside the list's dates.
+  if (gardenFilter && (date < gardenFilter.from || date > gardenFilter.to)) gardenFilter = { ...gardenFilter, from: date < gardenFilter.from ? date : gardenFilter.from, to: date > gardenFilter.to ? date : gardenFilter.to };
+  closeOverlays();
+  renderGarden();
+  if (!gardenEditing && data > 1) setTimeout(() => { const l = $("#gr-list p"); if (l) l.textContent += ` · ${data} lines added`; }, 600);
+});
+
+/* --- Delete --- */
+function openGardenDelete(r) {
+  gardenDeleting = r;
+  $("#grdel-text").innerHTML = `<strong>${esc(gardenTaskName(r.task_id))}</strong> on ${esc(fmtDay(r.action_date))} will be deleted, with its comments. This can't be undone.`;
+  $("#grdel-msg").textContent = "";
+  $("#grdel-modal").classList.add("active");
+}
+$("#grdel-confirm").addEventListener("click", async () => {
+  const { error } = await sb.rpc("delete_garden_report", { p_id: gardenDeleting.id });
+  if (error) { setMsg("grdel-msg", "\u26a0\ufe0f " + error.message, false); return; }
+  closeOverlays();
+  loadGardenList();
+});
+
+/* --- Comments --- */
+async function openGardenComments(r) {
+  gardenCommentsFor = r.id;
+  const units = rowIds(r, "garden_report_units", "unit_id").map((id) => gardenLookup.units.find((u) => u.id === id)).filter(Boolean).sort(unitCompare).map(unitChoiceLabel);
+  const areas = areasByGrouping(rowIds(r, "garden_report_areas", "area_id").map((id) => state.areas.find((a) => a.id === id)).filter(Boolean)).map(areaFullLabel);
+  $("#grc-head").innerHTML = `
+    <h3>${esc(gardenTaskName(r.task_id))} · ${esc(fmtDay(r.action_date))}</h3>
+    ${r.captured_late ? `<span class="late-badge">⏱ captured later, on ${esc(fmtDateTimeFull(r.created_at))}</span>` : ""}
+    <dl class="detail-grid">
+      <dt>Gardeners</dt><dd>${esc(rowIds(r, "garden_report_gardeners", "gardener_id").map(gardenerName).sort().join(", ") || "—")}</dd>
+      <dt>Units</dt><dd>${esc(units.join(", ") || "—")}</dd>
+      <dt>Communal entities</dt><dd>${esc(areas.join("; ") || "—")}</dd>
+      <dt>Description</dt><dd>${esc(r.description || "—")}</dd>
+      <dt>Captured by</dt><dd>${esc(r.created_by_name || "—")}</dd>
+    </dl>`;
+  $("#grc-body").value = "";
+  $("#grc-msg").textContent = "";
+  $("#grc-modal").classList.add("active");
+  loadGardenComments();
+}
+
+async function loadGardenComments() {
+  const { data } = await sb.from("garden_report_comments").select("*")
+    .eq("report_id", gardenCommentsFor).order("created_at", { ascending: false });
+  $("#grc-list").innerHTML = (data || []).length ? data.map((c) => `
+    <div class="fb-item" data-grc-item="${c.id}">
+      <div class="fb-head"><strong>${esc(c.author_id === me.id ? "You" : (c.author_name || "User"))}</strong>${c.author_role ? ` <span class="muted tiny">· ${esc(ROLE_LABEL[c.author_role] || c.author_role)}</span>` : ""}
+        <span class="tl-time">${fmtDate(c.created_at)}${c.updated_at ? " · edited" : ""}
+        ${c.author_id === me.id ? `<button class="icon-btn" data-grc-edit="${c.id}" title="Edit comment" aria-label="Edit comment">✏️</button>` : ""}</span></div>
+      <div class="fb-body" id="grc-text-${c.id}">${esc(c.body)}</div>
+    </div>`).join("") : `<p class="muted tiny">No comments yet.</p>`;
+}
+
+$("#grc-post").addEventListener("click", async () => {
+  const body = $("#grc-body").value.trim();
+  if (!body) return;
+  const { error } = await sb.from("garden_report_comments").insert({ report_id: gardenCommentsFor, body });
+  if (error) { setMsg("grc-msg", "\u26a0\ufe0f " + error.message, false); return; }
+  $("#grc-body").value = "";
+  $("#grc-msg").textContent = "";
+  loadGardenComments();
+  const r = gardenRows.find((x) => x.id === gardenCommentsFor);
+  if (r) { r.garden_report_comments = [...(r.garden_report_comments || []), { id: "new" }]; renderGardenRows(); }
+});
+
+document.addEventListener("click", async (e) => {
+  const ed = e.target.closest("[data-grc-edit]");
+  if (ed) {
+    const id = ed.dataset.grcEdit, box = $(`#grc-text-${id}`);
+    if (!box || box.querySelector("textarea")) return;
+    const text = box.textContent;
+    box.innerHTML = `<textarea rows="3" class="grc-edit-box">${esc(text)}</textarea>
+      <div class="fb-compose-bar" style="border:0;background:none;padding:4px 0">
+        <button type="button" class="btn ghost small" data-grc-cancel="${id}">Cancel</button>
+        <button type="button" class="btn primary small" data-grc-save="${id}">Save</button></div>`;
+    box.querySelector("textarea").focus();
+  }
+  const cancel = e.target.closest("[data-grc-cancel]");
+  if (cancel) loadGardenComments();
+  const save = e.target.closest("[data-grc-save]");
+  if (save) {
+    const id = save.dataset.grcSave;
+    const body = $(`#grc-text-${id} textarea`).value.trim();
+    if (!body) return;
+    const { error } = await sb.from("garden_report_comments").update({ body }).eq("id", id);
+    if (error) { setMsg("grc-msg", "\u26a0\ufe0f " + error.message, false); return; }
+    loadGardenComments();
+  }
+  // Row icons on the Gardening Report grid.
+  const find = (attr) => { const b = e.target.closest(`[${attr}]`); return b ? gardenRows.find((r) => r.id === b.getAttribute(attr)) : null; };
+  const rc = find("data-gr-comments"); if (rc) openGardenComments(rc);
+  const re = find("data-gr-edit"); if (re) openGardenModal(re);
+  const rd = find("data-gr-delete"); if (rd) openGardenDelete(rd);
+  const rp = find("data-gr-copy");
+  if (rp) openGardenModal(null, {
+    date: todayISO_(), tasks: [], description: "",
+    gardeners: rowIds(rp, "garden_report_gardeners", "gardener_id"),
+    units: rowIds(rp, "garden_report_units", "unit_id"), areas: rowIds(rp, "garden_report_areas", "area_id"),
+  });
+});
+
 /* ---------- Trustee-only registries: Trustees, Gardeners, Service providers ---------- */
 // One shared list + add/edit form, driven by the definitions below.
 const GENDER_LABEL = { male: "Male", female: "Female", other: "Other" };
@@ -3454,9 +3822,14 @@ async function openTicket(id) {
 
   // Trustee-only status transitions for Complete/Cancelled/Parked (icons).
   const STATUS_ICON = { busy: "▶️", complete: "✅", cancelled: "❌", parked: "⏸️" };
+  // Which status a trustee can move the ticket to from here.
+  //   Parked    -> Busy or Cancelled (not straight to Complete)
+  //   Cancelled -> Busy only
+  //   Complete  -> Busy, Cancelled or Parked
+  //   otherwise -> Complete, Cancelled or Parked
+  const NEXT_STATUSES = { parked: ["busy", "cancelled"], cancelled: ["busy"], complete: ["busy", "cancelled", "parked"] };
   const trusteeStatusBtns = isTrustee() && !isDraft
-    ? [...(["complete", "cancelled", "parked"].includes(t.status) ? ["busy"] : []),
-       ...["complete", "cancelled", "parked"].filter((s) => s !== t.status)]
+    ? (NEXT_STATUSES[t.status] || ["complete", "cancelled", "parked"])
         .map((s) => {
           const tip = `Mark ${TICKET_STATUS_LABEL[s]}` + (statusDesc(s) ? ` — ${statusDesc(s)}` : "");
           return `<button class="icon-btn ticket-act" data-ticket-status="${t.id}|${s}" title="${esc(tip)}" aria-label="${esc(tip)}">${STATUS_ICON[s]}</button>`;
@@ -3998,6 +4371,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editProject) openProjectModal(state.projects.find((x) => x.id === t.dataset.editProject));
   if (t.dataset.unlinkProjectTicket) setTicketProject(t.dataset.unlinkProjectTicket, null);
   // 10 Year Plan
+  if (t.dataset.editGtask) openGardenTaskModal(state.gardenTasks.find((x) => x.id === t.dataset.editGtask));
   if (t.dataset.editPlanstatus) openPlanStatusModal(state.planStatuses.find((x) => x.id === t.dataset.editPlanstatus));
   const planCard = t.closest("[data-edit-plan]");
   if (planCard) openPlanModal(state.planItems.find((x) => x.id === planCard.dataset.editPlan));

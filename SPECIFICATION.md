@@ -64,6 +64,19 @@ then the history newest first. Posting as the holder marks the ticket Busy
 (RPC `mark_ticket_busy`) only from Sent or Waiting; Parked stays Parked. Trustees
 reopen a Parked / Complete / Cancelled ticket with ▶️ Mark Busy. "This ticket relates to" is picked with icon tiles.
 
+**Ticket status changes (trustees):** Parked → Busy or Cancelled; Cancelled → Busy;
+Complete → Busy, Cancelled or Parked; otherwise → Complete, Cancelled or Parked.
+
+**Gardening Report** (menu group "Daily Working"; trustees and gardeners) — report
+lines: action date, gardening task (`gardening_tasks`, Admin → Gardening tasks),
+optional description, 1+ gardeners, 0+ units, 0+ communal entities, comments.
+Adding: tick several tasks to create one line per task with the same date and
+selections; "Same as my last report" and 📋 copy speed this up. No future dates;
+a past date is marked "captured late". Gardeners can edit/delete only today's
+on-time lines (date fixed); trustees any. Trustees and gardeners comment; authors
+edit their own comments. Writes go through RPCs `save_garden_reports` /
+`delete_garden_report`; lists via `garden_lookups` (migration 35).
+
 **Adding users:** a trustee can create a login on the Users screen
 (**+ Add user**: role, an unlinked registry record, name, email, password of at
 least 6 characters). The user is approved and linked straight away. This runs

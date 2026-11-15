@@ -147,6 +147,11 @@ in the SQL Editor the same way:
 - **`34_feedback_keeps_parked.sql`** — posting feedback only moves a ticket to
   Busy from Sent or Waiting; a Parked ticket stays Parked.
 
+- **`35_gardening_report.sql`** — the Gardening Report: gardening tasks list,
+  report lines (date, task, description, gardeners, units, communal entities),
+  comments, and the rules for who may add / change / delete lines. Starter
+  tasks are added once.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons
