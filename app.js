@@ -3453,9 +3453,10 @@ async function openTicket(id) {
   const canEditDetails = isTrustee() || loggerCanEdit;
 
   // Trustee-only status transitions for Complete/Cancelled/Parked (icons).
-  const STATUS_ICON = { complete: "✅", cancelled: "❌", parked: "⏸️" };
+  const STATUS_ICON = { busy: "▶️", complete: "✅", cancelled: "❌", parked: "⏸️" };
   const trusteeStatusBtns = isTrustee() && !isDraft
-    ? ["complete", "cancelled", "parked"].filter((s) => s !== t.status)
+    ? [...(["complete", "cancelled", "parked"].includes(t.status) ? ["busy"] : []),
+       ...["complete", "cancelled", "parked"].filter((s) => s !== t.status)]
         .map((s) => {
           const tip = `Mark ${TICKET_STATUS_LABEL[s]}` + (statusDesc(s) ? ` — ${statusDesc(s)}` : "");
           return `<button class="icon-btn ticket-act" data-ticket-status="${t.id}|${s}" title="${esc(tip)}" aria-label="${esc(tip)}">${STATUS_ICON[s]}</button>`;
@@ -3540,7 +3541,7 @@ function feedbackComposer(t, isDraft) {
   // No feedback while still a draft (not yet sent) or once closed.
   if (isDraft) return `<p class="muted tiny">Submit the ticket to start the conversation.</p>`;
   if (["complete", "cancelled"].includes(t.status)) {
-    return `<p class="muted tiny">This ticket is ${TICKET_STATUS_LABEL[t.status].toLowerCase()}. ${isTrustee() ? "Reopen by setting another status to add feedback." : "No further feedback can be added."}</p>`;
+    return `<p class="muted tiny">This ticket is ${TICKET_STATUS_LABEL[t.status].toLowerCase()}. ${isTrustee() ? "To add feedback, click ▶️ (Mark Busy) above to reopen it." : "No further feedback can be added."}</p>`;
   }
   // The photo sits inside the same box as the text: it belongs to this
   // feedback and is only uploaded when Post feedback is clicked.
@@ -3770,7 +3771,8 @@ document.addEventListener("submit", async (e) => {
 
   // 3) If the poster holds the ticket, it becomes Busy (done in the database,
   //    so it also works for gardeners, service providers and residents).
-  if (iHoldAssignedRole(t) && t.status !== "busy") {
+  //    A Parked ticket stays Parked.
+  if (iHoldAssignedRole(t) && ["sent", "waiting"].includes(t.status)) {
     await sb.rpc("mark_ticket_busy", { p_ticket: t.id });
   }
 

@@ -395,8 +395,10 @@
   </div>
 
   <div class="modal-overlay" id="detail-modal">
-    <div class="modal wide"><div id="detail-content"></div>
-      <div class="modal-actions"><button type="button" class="btn ghost" data-close>Close</button></div>
+    <div class="modal wide">
+      <!-- Close stays at the top right, even when scrolling a long history -->
+      <div class="modal-close-bar"><button type="button" class="modal-close" data-close title="Close" aria-label="Close">✕ Close</button></div>
+      <div id="detail-content"></div>
     </div>
   </div>
 

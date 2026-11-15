@@ -144,6 +144,9 @@ in the SQL Editor the same way:
   and Busy-on-feedback (`mark_ticket_busy`), both working for whoever holds the
   ticket, not only trustees.
 
+- **`34_feedback_keeps_parked.sql`** — posting feedback only moves a ticket to
+  Busy from Sent or Waiting; a Parked ticket stays Parked.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

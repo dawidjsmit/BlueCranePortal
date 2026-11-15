@@ -61,7 +61,8 @@ role) sends the ticket to another role via RPC `reassign_ticket` (adds a
 "Reassigned from X to Y" note to the history, status Waiting). Below it,
 **Feedback**: the composer (text + optional photo + Post feedback in one box),
 then the history newest first. Posting as the holder marks the ticket Busy
-(RPC `mark_ticket_busy`). "This ticket relates to" is picked with icon tiles.
+(RPC `mark_ticket_busy`) only from Sent or Waiting; Parked stays Parked. Trustees
+reopen a Parked / Complete / Cancelled ticket with ▶️ Mark Busy. "This ticket relates to" is picked with icon tiles.
 
 **Adding users:** a trustee can create a login on the Users screen
 (**+ Add user**: role, an unlinked registry record, name, email, password of at
