@@ -833,7 +833,7 @@ function ticketRow(t) {
     <td ${open}><strong>${esc(t.heading)}</strong></td>
     <td ${open}>${esc(ticketTargetLabel(t))}</td>
     <td ${open}>${esc(ticketTypeName(t.type_id))}</td>
-    <td ${open}>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</td>
+    <td ${open}>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}${t.assigned_user_name ? `<div class="muted tiny">👤 ${esc(t.assigned_user_name)}</div>` : ""}</td>
     <td ${open}>${esc(loggerName(t))}</td>
     <td ${open}>${statusPill(t.status)}</td>
     <td style="text-align:right">${isTrustee()
@@ -3839,7 +3839,7 @@ function ticketTargetLabel(t) {
   return "General";
 }
 function ticketCard(t) {
-  const assigned = t.assigned_role ? `· to <strong>${ROLE_LABEL[t.assigned_role] || t.assigned_role}</strong>` : "";
+  const assigned = t.assigned_role ? `· to <strong>${ROLE_LABEL[t.assigned_role] || t.assigned_role}</strong>${t.assigned_user_name ? ` (${esc(t.assigned_user_name)})` : ""}` : "";
   return `<div class="request-card" data-open-ticket="${t.id}">
     <div class="rc-top">
       <div><div class="rc-title">${esc(t.heading)}</div>
@@ -3892,6 +3892,7 @@ async function openTicket(id) {
       <dt>Logged by</dt><dd>${esc(loggerName(t))}${t.logged_by_role ? " (" + (ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""}</dd>
       <dt>Logged</dt><dd>${fmtDate(t.created_at)}</dd>
       <dt>Assigned to</dt><dd>${t.assigned_role ? (ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</dd>
+      <dt>Assigned user</dt><dd>${t.assigned_user_id ? (t.assigned_user_id === me.id ? "You" : esc(t.assigned_user_name || "—")) : '<span class="muted">Nobody yet</span>'}</dd>
       ${isTrustee() && t.project_id ? `<dt>Project</dt><dd>${esc(projectName(t.project_id) || "—")}</dd>` : ""}
     </dl>
     <p>${esc(t.description) || "<em>No description.</em>"}</p>
@@ -3914,12 +3915,14 @@ async function openTicket(id) {
     <p id="ticket-photo-msg" class="login-msg"></p>
 
     ${reassignPanel(t, isDraft)}
+    ${assignUserPanel(t, isDraft)}
 
     <h4 style="margin:14px 0 0">Feedback</h4>
     ${feedbackComposer(t, isDraft)}
     <div id="feedback-thread"><p class="muted tiny">Loading…</p></div>`;
 
   $("#detail-modal").classList.add("active");
+  if (isTrustee()) fillAssignUsers(t);
   const input = $("#ticket-photo-input");
   if (input) input.addEventListener("change", (e) => onTicketPhotoChosen(e, id));
 
@@ -3954,6 +3957,57 @@ function reassignPanel(t, isDraft) {
       <button type="button" class="reassign-go" id="reassign-btn" data-reassign-ticket="${t.id}" title="Reassign now" aria-label="Reassign now">→</button>
     </div>
     <p id="reassign-msg" class="login-msg"></p>`;
+}
+
+// Assigned user. Trustees: anybody in the ticket's role, any time.
+// Someone holding the role: themselves only (or unassign themselves).
+function assignUserPanel(t, isDraft) {
+  if (isDraft || !t.assigned_role) return "";
+  if (isTrustee()) {
+    // Options are filled in after the window opens (people in the role).
+    return `
+    <div class="reassign-line">
+      <strong>Assign user:</strong>
+      <select id="assign-user" aria-label="Assign to user"><option value="">— nobody —</option></select>
+      <button type="button" class="reassign-go" id="assign-user-btn" data-assign-ticket="${t.id}" title="Assign now" aria-label="Assign now">→</button>
+    </div>
+    <p id="assign-msg" class="login-msg"></p>`;
+  }
+  if (!iHoldAssignedRole(t) || ["complete", "cancelled"].includes(t.status)) return "";
+  return `
+    <div class="reassign-line">
+      ${t.assigned_user_id === me.id
+        ? `<span>👤 Assigned to you</span> <button type="button" class="link-btn" id="assign-me-btn" data-assign-ticket="${t.id}" data-assign-user="">Unassign me</button>`
+        : `<button type="button" class="btn ghost small" id="assign-me-btn" data-assign-ticket="${t.id}" data-assign-user="${me.id}">🙋 Assign to me</button>`}
+    </div>
+    <p id="assign-msg" class="login-msg"></p>`;
+}
+
+// Trustee's list: everyone currently in the ticket's role.
+async function fillAssignUsers(t) {
+  const sel = $("#assign-user");
+  if (!sel) return;
+  const { data, error } = await sb.rpc("ticket_role_users", { p_ticket: t.id });
+  if (error) { setMsg("assign-msg", "\u26a0\ufe0f " + (/ticket_role_users/.test(error.message) ? "Run supabase/37_ticket_assigned_user.sql first." : error.message), false); return; }
+  const people = data || [];
+  if (t.assigned_user_id && !people.some((p) => p.id === t.assigned_user_id)) people.push({ id: t.assigned_user_id, name: t.assigned_user_name || "(current)" });
+  sel.innerHTML = `<option value="">— nobody —</option>` + people.map((p) =>
+    `<option value="${p.id}" ${p.id === t.assigned_user_id ? "selected" : ""}>${esc(p.name)}${p.id === me.id ? " (you)" : ""}</option>`).join("");
+  if (!people.length) setMsg("assign-msg", `Nobody with a login is in the ${ROLE_LABEL[t.assigned_role] || t.assigned_role} role for this ticket yet.`, true);
+}
+
+async function assignTicketUser(ticketId, userId, btn) {
+  if (btn) btn.disabled = true;
+  setMsg("assign-msg", "Saving…", true);
+  const { error } = await sb.rpc("assign_ticket_user", { p_ticket: ticketId, p_user: userId || null });
+  if (error) {
+    if (btn) btn.disabled = false;
+    setMsg("assign-msg", "\u26a0\ufe0f " + (/assign_ticket_user/.test(error.message) ? "Run supabase/37_ticket_assigned_user.sql first." : error.message), false);
+    return;
+  }
+  await loadData();
+  openTicket(ticketId);
+  refreshActiveView();
 }
 
 function feedbackComposer(t, isDraft) {
@@ -4140,6 +4194,8 @@ document.addEventListener("click", async (e) => {
     $("#feedback-photo-input").value = "";
     showFeedbackPhoto();
   }
+  if (e.target.id === "assign-user-btn") assignTicketUser(e.target.dataset.assignTicket, $("#assign-user").value, e.target);
+  if (e.target.id === "assign-me-btn") assignTicketUser(e.target.dataset.assignTicket, e.target.dataset.assignUser, e.target);
   if (e.target.id === "reassign-btn") {
     const id = e.target.dataset.reassignTicket;
     const role = $("#reassign-role").value;
