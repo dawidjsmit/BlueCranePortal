@@ -4,9 +4,11 @@ Ideas and requests not built yet. Details are agreed when an item is picked up.
 
 ## New
 - **10 year plan**
-- **Projects**
 - **Reporting to the units**
 - **Gardeners day end report**
+
+## Done
+- **Projects** — built (Registry → Projects, PR #54).
 
 ## Carried over
 - **Full user activity tracking** — record what users do in the system, not
