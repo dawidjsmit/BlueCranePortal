@@ -20,8 +20,8 @@ create table if not exists communal_area_types (
   created_at  timestamptz not null default now()
 );
 
-insert into communal_area_types (name, sort_order) values
-  ('Road', 1), ('Gate', 2), ('Grass', 3), ('Flower Bed', 4), ('Lamp pole', 5)
+insert into communal_area_types (name) values
+  ('Road'), ('Gate'), ('Grass'), ('Flower Bed'), ('Lamp pole')
 on conflict (name) do nothing;
 
 -- ---------- communal_areas ----------

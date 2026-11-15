@@ -37,9 +37,9 @@ create table if not exists ticket_types (
   created_at  timestamptz not null default now()
 );
 
-insert into ticket_types (name, sort_order) values
-  ('Question', 1), ('Problem', 2), ('Request', 3),
-  ('Complaint', 4), ('Maintenance', 5)
+insert into ticket_types (name) values
+  ('Question'), ('Problem'), ('Request'),
+  ('Complaint'), ('Maintenance')
 on conflict (name) do nothing;
 
 -- ---------- tickets ----------
