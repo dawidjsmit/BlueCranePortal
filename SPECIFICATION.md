@@ -56,6 +56,13 @@ a communal entity (type then entity), or neither (shown as "General"). Never
 both (check `ticket_target_at_most_one`, migration 32). Any approved, active
 user may log a ticket in their own name.
 
+**Ticket window:** a **Reassign** box (trustees, or whoever holds the assigned
+role) sends the ticket to another role via RPC `reassign_ticket` (adds a
+"Reassigned from X to Y" note to the history, status Waiting). Below it,
+**Feedback**: the composer (text + optional photo + Post feedback in one box),
+then the history newest first. Posting as the holder marks the ticket Busy
+(RPC `mark_ticket_busy`). "This ticket relates to" is picked with icon tiles.
+
 **Adding users:** a trustee can create a login on the Users screen
 (**+ Add user**: role, an unlinked registry record, name, email, password of at
 least 6 characters). The user is approved and linked straight away. This runs
