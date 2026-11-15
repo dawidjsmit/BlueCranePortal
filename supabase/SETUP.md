@@ -113,6 +113,11 @@ in the SQL Editor the same way:
   loses trustee powers at once; nobody can deactivate themselves or the last
   active trustee. Needs the `manage-users` Edge Function below.
 
+- **`26_user_activity_log.sql`** — the User activity log. Every sign-in is
+  recorded by a database trigger on `auth.users` (table `user_activity`,
+  trustee-read-only). Also fills in each user's most recent sign-in so the
+  Users screen's "Last log in" column starts populated.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

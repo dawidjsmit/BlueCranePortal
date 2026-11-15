@@ -520,3 +520,7 @@ tbody tr:hover { background: #f7f9fc; }
 .btn.danger:hover { background: #b91c1c; }
 .btn-danger-text { background: transparent; color: #dc2626; }
 .btn-danger-text:hover { background: #fee2e2; }
+
+/* Small icon-only button (e.g. view a user's activity) */
+.icon-btn { background: none; border: 0; cursor: pointer; font-size: 15px; padding: 2px 6px; border-radius: 6px; vertical-align: middle; }
+.icon-btn:hover { background: #f3f5f9; }
