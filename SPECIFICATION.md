@@ -226,6 +226,16 @@ Ticket types, Users.
   A ticket can belong to one project (`tickets.project_id`), set from the project
   screen or the ticket's Edit details; only trustees can change it (trigger
   `tickets_guard_project`). List filter: status.
+- **10 Year Plan** (Registry, trustee-only) — plan items (`plan_items`: name,
+  description, year, budget, actual spend, optional grouping, status from `plan_statuses`, managed
+  on **Plan statuses** under Admin) with zero or more projects (`plan_item_projects`,
+  saved via RPC `save_plan_item`). Shown as a matrix: rows = groupings (A–Z, then
+  "No grouping"), columns = 10 years starting this year (Earlier/Later to shift),
+  budget total and actual spend total per year. An item's year can be changed freely; the intended
+  practice (not enforced) is to mark an unachieved item Postponed and add a new
+  item in a later year.
+- Communal entities list shows the type as "Grouping – Type"; the project form's
+  entity tick boxes show "Grouping – Type – Code – Name".
 - **Communal entity groupings** (Admin) — name + description (`communal_area_groups`).
   Each communal entity type may have one grouping (`communal_area_types.group_id`);
   the types screen has a Grouping column and filter. Every type picker shows

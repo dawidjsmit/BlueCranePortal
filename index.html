@@ -159,6 +159,51 @@
     </div>
   </div>
 
+  <!-- Plan status maintenance modal -->
+  <div class="modal-overlay" id="planstatus-modal">
+    <div class="modal">
+      <h3 id="planstatus-modal-title">Add plan status</h3>
+      <form id="planstatus-form">
+        <input type="hidden" id="planstatus-id" />
+        <label>Name <input id="planstatus-name" required placeholder="e.g. Postponed" /></label>
+        <label>Description <textarea id="planstatus-description" rows="2" placeholder="e.g. Not achieved in the planned year"></textarea></label>
+        <p id="planstatus-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save status</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 10 Year Plan item add/edit modal -->
+  <div class="modal-overlay" id="plan-modal">
+    <div class="modal wide">
+      <h3 id="plan-modal-title">Add plan item</h3>
+      <form id="plan-form" novalidate>
+        <input type="hidden" id="plan-id" />
+        <label>Name <input id="plan-name" autocomplete="off" placeholder="e.g. Reseal the roads" /></label>
+        <label>Description <textarea id="plan-description" rows="3"></textarea></label>
+        <div class="row">
+          <label>Year <input id="plan-year" type="number" min="2000" max="2200" step="1" /></label>
+          <label>Budget amount (R) <input id="plan-budget" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" /></label>
+          <label>Actual spend (R) <input id="plan-actual" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0" /></label>
+        </div>
+        <div class="row">
+          <label>Communal entity grouping (optional) <select id="plan-group"></select></label>
+          <label>Status <select id="plan-status"></select></label>
+        </div>
+        <label>Projects</label>
+        <div class="checklist" id="plan-projects"></div>
+        <p id="plan-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save plan item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Project status maintenance modal -->
   <div class="modal-overlay" id="projstatus-modal">
     <div class="modal">
