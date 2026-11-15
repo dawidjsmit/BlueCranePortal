@@ -200,12 +200,30 @@
       <form id="areatype-form">
         <input type="hidden" id="areatype-id" />
         <label>Name <input id="areatype-name" required placeholder="e.g. Road" /></label>
+        <label>Grouping <select id="areatype-group"></select></label>
         <label>Description <textarea id="areatype-description" rows="2" placeholder="e.g. Internal tarred roads and paved driveways"></textarea></label>
         <label class="check"><input id="areatype-active" type="checkbox" checked /> Active</label>
         <p id="areatype-msg" class="login-msg"></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
           <button type="submit" class="btn primary">Save type</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Communal entity GROUPING maintenance modal -->
+  <div class="modal-overlay" id="areagroup-modal">
+    <div class="modal">
+      <h3 id="areagroup-modal-title">Add grouping</h3>
+      <form id="areagroup-form">
+        <input type="hidden" id="areagroup-id" />
+        <label>Name <input id="areagroup-name" required placeholder="e.g. Garden" /></label>
+        <label>Description <textarea id="areagroup-description" rows="2" placeholder="e.g. Lawns, flower beds and trees"></textarea></label>
+        <p id="areagroup-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save grouping</button>
         </div>
       </form>
     </div>
