@@ -642,6 +642,19 @@
   </div>
 
   <!-- Supabase JS client (loaded from CDN) -->
+  <!-- Delete ticket confirmation (in-app, shown on top of other windows) -->
+  <div class="modal-overlay" id="ticketdel-modal">
+    <div class="modal">
+      <h3>Delete ticket</h3>
+      <p id="ticketdel-text"></p>
+      <p id="ticketdel-msg" class="login-msg"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="ticketdel-cancel">Cancel</button>
+        <button type="button" class="btn danger" id="ticketdel-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>

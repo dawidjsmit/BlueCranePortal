@@ -555,3 +555,8 @@ tbody tr:hover { background: #f7f9fc; }
   border-radius: 8px; cursor: pointer; font-size: 15px; line-height: 1; padding: 4px 0; }
 .plan-add:hover { color: var(--brand); border-color: var(--brand); }
 .plan-total { font-weight: 700; text-align: right; white-space: nowrap; }
+
+/* All Tickets grid */
+.clickable-row td[data-open-ticket] { cursor: pointer; }
+.ticket-grid { min-width: 820px; }
+#ticketdel-modal { z-index: 1100; }
