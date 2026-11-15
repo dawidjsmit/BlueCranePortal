@@ -140,6 +140,10 @@ in the SQL Editor the same way:
   entity, or neither (never both). Any approved, active user may log a ticket
   in their own name (before, non-trustees could only log for their own unit).
 
+- **`33_ticket_reassign.sql`** — Reassign as its own action (`reassign_ticket`),
+  and Busy-on-feedback (`mark_ticket_busy`), both working for whoever holds the
+  ticket, not only trustees.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

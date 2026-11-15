@@ -3489,9 +3489,11 @@ async function openTicket(id) {
     </div>
     <p id="ticket-photo-msg" class="login-msg"></p>
 
+    ${reassignPanel(t, isDraft)}
+
     <h4 style="margin:14px 0 0">Feedback</h4>
-    <div id="feedback-thread"><p class="muted tiny">Loading…</p></div>
-    ${feedbackComposer(t, isDraft)}`;
+    ${feedbackComposer(t, isDraft)}
+    <div id="feedback-thread"><p class="muted tiny">Loading…</p></div>`;
 
   $("#detail-modal").classList.add("active");
   const input = $("#ticket-photo-input");
@@ -3513,42 +3515,57 @@ function iHoldAssignedRole(t) {
   return false;
 }
 
+// Reassign the ticket to another role (its own action, not part of feedback).
+// Trustees always; otherwise whoever holds the role it's assigned to.
+function reassignPanel(t, isDraft) {
+  if (isDraft || ["complete", "cancelled"].includes(t.status)) return "";
+  if (!(isTrustee() || iHoldAssignedRole(t))) return "";
+  const opts = ROUTE_ROLES.filter((r) => r !== t.assigned_role)
+    .map((r) => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join("");
+  return `
+    <div class="reassign-box">
+      <h4>Reassign</h4>
+      <p class="muted tiny">Currently assigned to <strong>${esc(ROLE_LABEL[t.assigned_role] || "—")}</strong>.</p>
+      <div class="reassign-row">
+        <select id="reassign-role">${opts}</select>
+        <button type="button" class="btn primary small" id="reassign-btn" data-reassign-ticket="${t.id}">Reassign</button>
+      </div>
+      <p id="reassign-msg" class="login-msg"></p>
+    </div>`;
+}
+
 function feedbackComposer(t, isDraft) {
   // No feedback while still a draft (not yet sent) or once closed.
   if (isDraft) return `<p class="muted tiny">Submit the ticket to start the conversation.</p>`;
   if (["complete", "cancelled"].includes(t.status)) {
     return `<p class="muted tiny">This ticket is ${TICKET_STATUS_LABEL[t.status].toLowerCase()}. ${isTrustee() ? "Reopen by setting another status to add feedback." : "No further feedback can be added."}</p>`;
   }
-  // Can the current user route the ticket onward?
-  //  - trustees always
-  //  - a user currently holding the assigned role
-  const canRoute = isTrustee() || iHoldAssignedRole(t);
-  const roleOptions = ROUTE_ROLES
-    .map((r) => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join("");
-  // Default "send to" suggestion: back to the logger's role.
+  // The photo sits inside the same box as the text: it belongs to this
+  // feedback and is only uploaded when Post feedback is clicked.
   return `
     <form id="feedback-form" class="feedback-form">
-      <textarea id="feedback-body" rows="2" placeholder="Add feedback…" required></textarea>
-      <div class="feedback-controls">
-        <label class="feedback-photo-label btn ghost small">📎 Photo
-          <input type="file" accept="image/*" id="feedback-photo-input" hidden />
-          <span id="feedback-photo-name" class="muted tiny"></span>
-        </label>
-        ${canRoute ? `
-        <label class="send-to-wrap">
-          <input type="checkbox" id="feedback-send-check" />
-          send to
-          <select id="feedback-send-role" disabled>${roleOptions}</select>
-        </label>` : ""}
-        <button type="submit" class="btn primary small">Post feedback</button>
+      <div class="fb-compose">
+        <textarea id="feedback-body" rows="3" placeholder="Write your feedback…" required></textarea>
+        <div class="fb-compose-bar">
+          <label class="fb-attach" title="Attach a photo to this feedback">📎 Attach photo
+            <input type="file" accept="image/*" id="feedback-photo-input" hidden /></label>
+          <span id="feedback-photo-chip" class="fb-photo-chip" hidden>
+            <img id="feedback-photo-thumb" alt="" />
+            <span id="feedback-photo-name"></span>
+            <button type="button" id="feedback-photo-clear" title="Remove photo" aria-label="Remove photo">✕</button>
+          </span>
+          <button type="submit" class="btn primary small fb-post">Post feedback</button>
+        </div>
       </div>
+      <p class="muted tiny" style="margin:4px 0 0">A photo you attach is uploaded with this feedback when you click Post feedback.</p>
       <p id="feedback-msg" class="login-msg"></p>
-    </form>`;
+    </form>
+    <h5 class="fb-history-title">History <span class="muted tiny">(latest first)</span></h5>`;
 }
 
 async function renderFeedbackThread(ticketId) {
   const { data: fb } = await sb.from("ticket_feedback")
-    .select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true });
+    .select("*").eq("ticket_id", ticketId).order("created_at", { ascending: false });
   const { data: fphotos } = await sb.from("feedback_photos")
     .select("*").in("feedback_id", (fb || []).map((f) => f.id).length ? (fb || []).map((f) => f.id) : ["00000000-0000-0000-0000-000000000000"]);
   const photosByFb = {};
@@ -3664,14 +3681,43 @@ async function deleteTicketPhoto(photoId) {
 }
 
 /* ---------- Feedback conversation + routing + status automation ---------- */
-// Enable the send-to dropdown only when the checkbox is ticked.
-document.addEventListener("change", (e) => {
-  if (e.target.id === "feedback-send-check") {
-    $("#feedback-send-role").disabled = !e.target.checked;
+// Show the chosen photo (thumbnail + name) inside the feedback box.
+let feedbackThumbUrl = null;
+function showFeedbackPhoto() {
+  const input = $("#feedback-photo-input");
+  const f = input && input.files[0];
+  if (feedbackThumbUrl) { URL.revokeObjectURL(feedbackThumbUrl); feedbackThumbUrl = null; }
+  $("#feedback-photo-chip").hidden = !f;
+  if (f) {
+    feedbackThumbUrl = URL.createObjectURL(f);
+    $("#feedback-photo-thumb").src = feedbackThumbUrl;
+    $("#feedback-photo-name").textContent = f.name;
   }
-  if (e.target.id === "feedback-photo-input") {
-    const f = e.target.files[0];
-    $("#feedback-photo-name").textContent = f ? " " + f.name : "";
+}
+document.addEventListener("change", (e) => {
+  if (e.target.id === "feedback-photo-input") showFeedbackPhoto();
+});
+document.addEventListener("click", async (e) => {
+  if (e.target.id === "feedback-photo-clear") {
+    $("#feedback-photo-input").value = "";
+    showFeedbackPhoto();
+  }
+  if (e.target.id === "reassign-btn") {
+    const id = e.target.dataset.reassignTicket;
+    const role = $("#reassign-role").value;
+    e.target.disabled = true;
+    setMsg("reassign-msg", "Reassigning…", true);
+    const { error } = await sb.rpc("reassign_ticket", { p_ticket: id, p_role: role });
+    if (error) {
+      e.target.disabled = false;
+      setMsg("reassign-msg", "\u26a0\ufe0f " + (/reassign_ticket/.test(error.message)
+        ? "Run supabase/33_ticket_reassign.sql first." : error.message), false);
+      return;
+    }
+    await loadData();
+    if (state.tickets.some((x) => x.id === id)) openTicket(id);
+    else closeOverlays(); // you may no longer see it once it's with another role
+    refreshActiveView();
   }
 });
 
@@ -3684,8 +3730,6 @@ document.addEventListener("submit", async (e) => {
   const body = $("#feedback-body").value.trim();
   if (!body) return;
 
-  const sendChecked = $("#feedback-send-check") && $("#feedback-send-check").checked;
-  const sendRole = sendChecked ? $("#feedback-send-role").value : null;
   const file = $("#feedback-photo-input") ? $("#feedback-photo-input").files[0] : null;
 
   setMsg("feedback-msg", "Posting…", true);
@@ -3706,18 +3750,10 @@ document.addEventListener("submit", async (e) => {
     }
   }
 
-  // 3) Status automation:
-  //    - rerouted  -> status Waiting, assigned_role changes
-  //    - else, if poster holds the assigned role -> status Busy
-  const updates = {};
-  if (sendRole && sendRole !== t.assigned_role) {
-    updates.assigned_role = sendRole;
-    updates.status = "waiting";
-  } else if (iHoldAssignedRole(t) && t.status !== "busy") {
-    updates.status = "busy";
-  }
-  if (Object.keys(updates).length) {
-    await sb.from("tickets").update(updates).eq("id", t.id);
+  // 3) If the poster holds the ticket, it becomes Busy (done in the database,
+  //    so it also works for gardeners, service providers and residents).
+  if (iHoldAssignedRole(t) && t.status !== "busy") {
+    await sb.rpc("mark_ticket_busy", { p_ticket: t.id });
   }
 
   await loadData();
@@ -3740,8 +3776,8 @@ function openTicketModal(ticket) {
 
   // What it relates to: a unit, a communal entity, or neither. New tickets
   // start with nothing chosen, so the user has to pick.
-  $("#ticket-relates").value = !ticket ? ""
-    : ticket.unit_id ? "unit" : ticket.communal_area_id ? "area" : "none";
+  setRelates(!ticket ? ""
+    : ticket.unit_id ? "unit" : ticket.communal_area_id ? "area" : "none");
 
   // Unit dropdown: ALL units for every role. Residents get their own unit
   // pre-selected (not gardeners/SPs, for whom it isn't a sensible default).
@@ -3779,9 +3815,20 @@ function unitChoiceLabel(u) {
   const n = parseInt(u.number, 10);
   return "Unit " + (Number.isFinite(n) ? String(n).padStart(2, "0") : u.number);
 }
+// The "This ticket relates to" tiles (radio buttons).
+function getRelates() {
+  const r = document.querySelector('input[name="ticket-relates"]:checked');
+  return r ? r.value : "";
+}
+function setRelates(v) {
+  document.querySelectorAll('input[name="ticket-relates"]').forEach((i) => { i.checked = i.value === v; });
+}
 // Show only the part of the form that matches "This ticket relates to".
 function showTicketRelates() {
-  const r = $("#ticket-relates").value;
+  const r = getRelates();
+  // Highlight the chosen tile (also for browsers without CSS :has).
+  document.querySelectorAll(".relates-opt").forEach((l) =>
+    l.classList.toggle("checked", !!l.querySelector("input:checked")));
   $("#ticket-unit-wrap").hidden = r !== "unit";
   $("#ticket-area-wrap").hidden = r !== "area";
 }
@@ -3797,7 +3844,7 @@ function populateTicketAreas(selectedId) {
 $("#ticket-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = $("#ticket-id").value;
-  const relates = $("#ticket-relates").value;
+  const relates = getRelates();
   // Only the chosen kind is saved, so a ticket never has both.
   const unitId = relates === "unit" ? ($("#ticket-unit").value || null) : null;
   const areaId = relates === "area" ? ($("#ticket-area").value || null) : null;
@@ -3977,7 +4024,7 @@ document.addEventListener("change", (e) => {
   if (e.target.id === "occupant-active") toggleLeftOn("occupant");
   if (e.target.id === "pet-type") togglePetOther();
   if (e.target.id === "ticket-areatype") populateTicketAreas("");
-  if (e.target.id === "ticket-relates") showTicketRelates();
+  if (e.target.name === "ticket-relates") showTicketRelates();
 });
 $$(".modal-overlay").forEach((ov) =>
   ov.addEventListener("click", (e) => { if (e.target === ov) ov.classList.remove("active"); }));
