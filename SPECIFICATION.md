@@ -76,6 +76,12 @@ a past date is marked "captured late". Gardeners can edit/delete only today's
 on-time lines (date fixed); trustees any. Trustees and gardeners comment; authors
 edit their own comments. Writes go through RPCs `save_garden_reports` /
 `delete_garden_report`; lists via `garden_lookups` (migration 35).
+What's new (migration 36): per user, `garden_seen` (first / last visit) and
+`garden_report_seen` (comments read per line). Opening the screen
+(`garden_open_screen`) shows "since your last visit" counts and 🆕 on lines added
+by others since then; lines with unread comments by others show "💬 new" until
+opened (`garden_mark_report_seen`). The Dashboard shows a box when there is
+something new (`garden_whats_new`).
 
 **Adding users:** a trustee can create a login on the Users screen
 (**+ Add user**: role, an unlinked registry record, name, email, password of at

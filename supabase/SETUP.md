@@ -152,6 +152,10 @@ in the SQL Editor the same way:
   comments, and the rules for who may add / change / delete lines. Starter
   tasks are added once.
 
+- **`36_garden_whats_new.sql`** — "what's new" on the Gardening Report: remembers
+  each user's last visit and which line comments they've read (🆕 lines,
+  "💬 new" comments, Dashboard box).
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

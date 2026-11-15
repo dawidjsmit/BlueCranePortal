@@ -640,7 +640,7 @@ function showView(name) {
     projectstatuses: renderProjectStatuses,
     plan: renderPlan,
     planstatuses: renderPlanStatuses,
-    garden: renderGarden,
+    garden: () => renderGarden(true),
     gardentasks: renderGardenTasks,
     activity: renderActivity,
   }[name];
@@ -683,6 +683,7 @@ function renderDashboard() {
   const myDrafts = state.tickets.filter((t) => t.status === "create" && t.logged_by === me.id);
 
   $("#main").innerHTML = `
+    <div id="dash-garden"></div>
     <div class="stats-grid">
       ${isTrustee() ? statCard(state.units.length, "Units", "") : ""}
       ${statCard(open.length, "Open tickets", "open")}
@@ -698,6 +699,20 @@ function renderDashboard() {
           : `<div class="empty">🎉 Nothing waiting on you right now.</div>`}
       </div>
       ${mine.length ? `<div style="margin-top:12px"><button class="link-btn" data-view="ticket-feedback">View all →</button></div>` : ""}
+    </div>`;
+  if (isTrustee() || me.role === "gardener") dashGardenNews();
+}
+
+// Dashboard: "What's new" on the Gardening Report since my last visit.
+async function dashGardenNews() {
+  const { data, error } = await sb.rpc("garden_whats_new");
+  const box = $("#dash-garden");
+  if (error || !data || !box || !(data.new_lines || data.new_comments)) return;
+  box.innerHTML = `
+    <div class="panel whats-new-panel">
+      <div class="panel-head"><h2>🌱 What's new on the Gardening Report</h2>
+        <button class="btn primary small" data-view="garden">Open →</button></div>
+      <p>${data.new_lines ? `<strong>${data.new_lines}</strong> new report line${data.new_lines === 1 ? "" : "s"}` : ""}${data.new_lines && data.new_comments ? " and " : ""}${data.new_comments ? `<strong>${data.new_comments}</strong> new comment${data.new_comments === 1 ? "" : "s"}` : ""} since your last visit.</p>
     </div>`;
 }
 
@@ -2285,6 +2300,18 @@ let gardenRows = [];            // report lines for the current filter
 let gardenEditing = null;       // the line being edited (null = adding)
 let gardenCommentsFor = null;   // report id whose comments are open
 let gardenDeleting = null;
+// "What's new": the previous visit (from the database), and when I last read each line's comments.
+let gardenVisit = null;         // { previous, baseline, new_lines, new_comments }
+let gardenSeen = {};            // report id -> when I last opened its comments
+const ts = (s) => (s ? new Date(s).getTime() : 0);
+function isNewGardenLine(r) {
+  return !!gardenVisit && r.created_by !== me.id && ts(r.created_at) > ts(gardenVisit.previous);
+}
+function newGardenComments(r) {
+  if (!gardenVisit) return 0;
+  const since = ts(gardenSeen[r.id] || gardenVisit.baseline);
+  return (r.garden_report_comments || []).filter((c) => c.author_id !== me.id && ts(c.created_at) > since).length;
+}
 
 const gardenTaskName = (id) => state.gardenTasks.find((t) => t.id === id)?.name || "—";
 const gardenerName = (id) => gardenLookup?.gardeners.find((g) => g.id === id)?.name || "—";
@@ -2312,8 +2339,19 @@ async function ensureGardenLookup() {
   return true;
 }
 
-async function renderGarden() {
+async function renderGarden(newVisit = false) {
   if (!(await ensureGardenLookup())) return;
+  if (newVisit) {
+    const { data, error } = await sb.rpc("garden_open_screen");
+    gardenVisit = error ? null : data;   // null until migration 36 is run
+  }
+  const nv = gardenVisit;
+  const whatsNew = nv && (nv.new_lines || nv.new_comments)
+    ? `<div class="whats-new">Since your last visit (${esc(fmtDateTimeFull(nv.previous))}):
+        <strong>${nv.new_lines} new line${nv.new_lines === 1 ? "" : "s"}</strong> ·
+        <strong>${nv.new_comments} new comment${nv.new_comments === 1 ? "" : "s"}</strong>.
+        New lines show 🆕; lines with new comments show <span class="new-comments">💬 new</span>.${nv.new_lines ? " Some may be outside the dates below." : ""}</div>`
+    : "";
   if (!gardenFilter) { const d = defaultActivityFilter(); gardenFilter = { from: d.from, to: d.to, gardener: "", task: "" }; }
   const f = gardenFilter;
   const gOpts = `<option value="">All gardeners</option>` + gardenLookup.gardeners.map((g) =>
@@ -2326,6 +2364,7 @@ async function renderGarden() {
       <div class="panel-head"><h2>🌱 Gardening Report</h2>
         <button class="btn primary small" id="garden-add-btn">+ Add report</button></div>
       <p class="muted tiny">What the gardeners did. Gardeners can change or delete today's lines; lines for earlier dates are locked${isTrustee() ? " (trustees can still change them)" : ""}. Lines captured for an earlier date are marked ⏱.</p>
+      ${whatsNew}
       <div class="filters">
         <label>Date from <input type="date" id="gr-from" value="${esc(f.from)}" max="${todayISO_()}" /></label>
         <label>Date to <input type="date" id="gr-to" value="${esc(f.to)}" max="${todayISO_()}" /></label>
@@ -2347,12 +2386,13 @@ async function loadGardenList() {
   const f = gardenFilter;
   if (f.from && f.to && f.from > f.to) { $("#gr-list").innerHTML = `<div class="empty">"Date from" is after "Date to".</div>`; return; }
   let q = sb.from("garden_reports")
-    .select("*, garden_report_gardeners(gardener_id), garden_report_units(unit_id), garden_report_areas(area_id), garden_report_comments(id)")
+    .select("*, garden_report_gardeners(gardener_id), garden_report_units(unit_id), garden_report_areas(area_id), garden_report_comments(id, created_at, author_id)")
     .order("action_date", { ascending: false }).order("created_at", { ascending: false }).limit(1000);
   if (f.from) q = q.gte("action_date", f.from);
   if (f.to) q = q.lte("action_date", f.to);
   if (f.task) q = q.eq("task_id", f.task);
-  const { data, error } = await q;
+  const [{ data, error }, seen] = await Promise.all([q, sb.from("garden_report_seen").select("report_id, seen_at")]);
+  gardenSeen = Object.fromEntries((seen.data || []).map((x) => [x.report_id, x.seen_at]));
   if (gardenFilter !== f || !$("#gr-list")) return;
   if (error) { $("#gr-list").innerHTML = `<div class="empty">⚠️ ${esc(error.message)}</div>`; return; }
   gardenRows = (data || []).filter((r) => !f.gardener || rowIds(r, "garden_report_gardeners", "gardener_id").includes(f.gardener));
@@ -2376,14 +2416,16 @@ function renderGardenRows() {
     const late = r.captured_late
       ? `<div><span class="late-badge" title="Captured on ${esc(fmtDateTimeFull(r.created_at))}${r.created_by_name ? " by " + esc(r.created_by_name) : ""}">⏱ captured later</span></div>` : "";
     const edit = canEditGarden(r);
-    return `<tr>
-      <td style="white-space:nowrap">${fmtDay(r.action_date)}${late}</td>
+    const fresh = isNewGardenLine(r);
+    const newC = newGardenComments(r);
+    return `<tr class="${fresh ? "new-row" : ""}">
+      <td style="white-space:nowrap">${fresh ? `<span class="new-badge" title="Added since your last visit">🆕</span> ` : ""}${fmtDay(r.action_date)}${late}</td>
       <td><strong>${esc(gardenTaskName(r.task_id))}</strong>${r.description ? `<div class="muted tiny">${esc(r.description)}</div>` : ""}</td>
       <td>${chipList(gardeners)}</td>
       <td>${chipList(units, Infinity)}</td>
       <td>${chipList(areas, Infinity)}</td>
       <td class="gr-actions">
-        <button class="icon-btn" data-gr-comments="${r.id}" title="Comments" aria-label="Comments">💬${nComments ? `<span class="tiny">${nComments}</span>` : ""}</button>
+        <button class="icon-btn${newC ? " new-comments" : ""}" data-gr-comments="${r.id}" title="${newC ? `${newC} new comment${newC === 1 ? "" : "s"}` : "Comments"}" aria-label="Comments">💬${newC ? `<span class="tiny">new</span>` : nComments ? `<span class="tiny">${nComments}</span>` : ""}</button>
         <button class="icon-btn" data-gr-copy="${r.id}" title="Use as a starting point for a new report" aria-label="Copy">📋</button>
         ${edit ? `<button class="icon-btn" data-gr-edit="${r.id}" title="Edit" aria-label="Edit">✏️</button>
         <button class="icon-btn" data-gr-delete="${r.id}" title="Delete" aria-label="Delete">🗑️</button>` : ""}
@@ -2511,6 +2553,10 @@ $("#grdel-confirm").addEventListener("click", async () => {
 /* --- Comments --- */
 async function openGardenComments(r) {
   gardenCommentsFor = r.id;
+  // Opening the comments marks them as read for me.
+  sb.rpc("garden_mark_report_seen", { p_report: r.id }).then(() => {});
+  gardenSeen[r.id] = new Date().toISOString();
+  if ($("#gr-list")) renderGardenRows();
   const units = rowIds(r, "garden_report_units", "unit_id").map((id) => gardenLookup.units.find((u) => u.id === id)).filter(Boolean).sort(unitCompare).map(unitChoiceLabel);
   const areas = areasByGrouping(rowIds(r, "garden_report_areas", "area_id").map((id) => state.areas.find((a) => a.id === id)).filter(Boolean)).map(areaFullLabel);
   $("#grc-head").innerHTML = `
@@ -2550,7 +2596,7 @@ $("#grc-post").addEventListener("click", async () => {
   $("#grc-msg").textContent = "";
   loadGardenComments();
   const r = gardenRows.find((x) => x.id === gardenCommentsFor);
-  if (r) { r.garden_report_comments = [...(r.garden_report_comments || []), { id: "new" }]; renderGardenRows(); }
+  if (r) { r.garden_report_comments = [...(r.garden_report_comments || []), { id: "new", author_id: me.id, created_at: new Date().toISOString() }]; renderGardenRows(); }
 });
 
 document.addEventListener("click", async (e) => {
