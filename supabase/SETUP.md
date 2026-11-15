@@ -136,6 +136,10 @@ in the SQL Editor the same way:
 - **`31_plan_item_type.sql`** — an optional communal entity type on each
   10 Year Plan item (must match the item's grouping).
 
+- **`32_ticket_relates_to.sql`** — a ticket relates to a unit, a communal
+  entity, or neither (never both). Any approved, active user may log a ticket
+  in their own name (before, non-trustees could only log for their own unit).
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

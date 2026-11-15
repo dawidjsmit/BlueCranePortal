@@ -51,6 +51,11 @@ Six login roles (enum `app_role`):
 New sign-ups start `pending`; a trustee approves them and links them to a unit.
 The first trustee is promoted manually once via SQL.
 
+**Logging a ticket:** the user picks what it relates to: a unit ("Unit 01"…),
+a communal entity (type then entity), or neither (shown as "General"). Never
+both (check `ticket_target_at_most_one`, migration 32). Any approved, active
+user may log a ticket in their own name.
+
 **Adding users:** a trustee can create a login on the Users screen
 (**+ Add user**: role, an unlinked registry record, name, email, password of at
 least 6 characters). The user is approved and linked straight away. This runs
