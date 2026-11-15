@@ -135,6 +135,7 @@ async function route() {
   }
   me = prof;
 
+  if (me.deactivated_at) return showDeactivated();
   if (me.status !== "approved") return showPending();
   return showApp();
 }
@@ -143,6 +144,7 @@ async function route() {
 function hideAll() {
   $("#view-login").hidden = true;
   $("#view-pending").hidden = true;
+  $("#view-deactivated").hidden = true;
   $("#view-forgot").hidden = true;
   $("#view-set-password").hidden = true;
   $("#app-header").hidden = true;
@@ -165,6 +167,15 @@ function showPending() {
   hideAll();
   $("#view-pending").hidden = false;
 }
+function showDeactivated() {
+  hideAll();
+  $("#view-deactivated").hidden = false;
+}
+// Supabase refuses sign-in for banned (deactivated) users with code "user_banned".
+function isBannedError(err) {
+  return !!err && (err.code === "user_banned" || /banned/i.test(err.message || ""));
+}
+const BANNED_MSG = "⛔ This account has been deactivated. Please contact a trustee if you think this is a mistake.";
 
 const redirectUrl = () => window.location.href.split("#")[0].split("?")[0];
 function setMsg(id, text, ok) {
@@ -191,6 +202,7 @@ $("#magic-form").addEventListener("submit", async (e) => {
     email: $("#magic-email").value.trim(),
     options: { emailRedirectTo: redirectUrl() },
   });
+  if (isBannedError(error)) { setMsg("login-msg", BANNED_MSG, false); return; }
   setMsg("login-msg", error ? "⚠️ " + error.message : "✅ Check your email for the magic link!", !error);
 });
 
@@ -202,6 +214,7 @@ $("#password-form").addEventListener("submit", async (e) => {
     email: $("#pw-email").value.trim(),
     password: $("#pw-password").value,
   });
+  if (isBannedError(error)) { setMsg("login-msg", BANNED_MSG, false); return; }
   if (error) {
     setMsg("login-msg",
       "⚠️ " + (error.message.includes("Invalid")
@@ -241,6 +254,7 @@ $("#set-password-form").addEventListener("submit", async (e) => {
 $("#set-pw-skip").addEventListener("click", () => { recovering = false; route(); });
 
 $("#pending-signout").addEventListener("click", () => sb.auth.signOut());
+$("#deactivated-signout").addEventListener("click", () => sb.auth.signOut());
 
 /* ---------- Main app ---------- */
 async function showApp() {
@@ -2330,8 +2344,10 @@ async function onConductChosen(e) {
 }
 
 function renderPeople() {
+  // Pending first, then active users, then deactivated ones.
+  const rank = (p) => (p.deactivated_at ? 2 : p.status === "approved" ? 1 : 0);
   const people = state.profiles.slice().sort((a, b) =>
-    (a.status === "approved") - (b.status === "approved")
+    rank(a) - rank(b)
     || String(a.full_name || a.email).localeCompare(String(b.full_name || b.email)));
   const rows = people.map((p) => {
     const rec = recordForUser(p);
@@ -2344,22 +2360,27 @@ function renderPeople() {
       ? units.map((id) => unitLinkChip(id)).join(" ")
       : `<span class="muted tiny">${["gardener", "service_provider"].includes(p.role) ? "not unit-linked" : "—"}</span>`;
     return `<tr>
-      <td>${esc(p.full_name || "—")}<div class="muted tiny">${esc(p.email)}</div></td>
+      <td>${esc(p.full_name || "—")}${p.id === me.id ? ' <span class="muted tiny">(you)</span>' : ""}<div class="muted tiny">${esc(p.email)}</div></td>
       <td><span class="role-chip ${p.role}">${esc(ROLE_LABEL[p.role] || p.role)}</span></td>
       <td>${recCell}</td>
       <td>${unitCell}</td>
-      <td><span class="pill ${p.status}">${p.status}</span></td>
-      <td style="text-align:right">
-        <button class="btn ${rec && p.status === "approved" ? "ghost" : "primary"} small" data-user-link="${p.id}">
+      <td>${p.deactivated_at
+        ? `<span class="pill rejected">Deactivated</span><div class="muted tiny">${fmtDay(p.deactivated_at)}</div>`
+        : `<span class="pill ${p.status}">${p.status}</span>`}</td>
+      <td style="text-align:right;white-space:nowrap">
+        ${p.deactivated_at
+          ? `<button class="btn primary small" data-user-reactivate="${p.id}">Reactivate</button>`
+          : `<button class="btn ${rec && p.status === "approved" ? "ghost" : "primary"} small" data-user-link="${p.id}">
           ${p.status !== "approved" ? "Approve & link" : (rec ? "Change" : "Link record")}</button>
+        ${p.id !== me.id ? `<button class="btn small btn-danger-text" data-user-deactivate="${p.id}">Deactivate</button>` : ""}`}
       </td>
     </tr>`;
   }).join("");
 
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>👥 Users &amp; approvals</h2></div>
-      <p class="muted tiny">Each user is linked to one registry record that matches their role. Their units come from that record — to change a user's units, edit the record. Add the person to the right registry first, then link them here.</p>
+      <div class="panel-head"><h2>👥 Users &amp; approvals</h2><button class="btn primary small" data-user-add>+ Add user</button></div>
+      <p class="muted tiny">Each user is linked to one registry record that matches their role. Their units come from that record — to change a user's units, edit the record. Add the person to the right registry first, then link them here or use + Add user. A deactivated user can no longer sign in or use the system.</p>
       <div class="table-wrap"><table><thead><tr>
         <th>User</th><th>Role</th><th>Registry record</th><th>Units (from record)</th><th>Status</th><th></th>
       </tr></thead><tbody>${rows || `<tr><td colspan="6" class="empty">No one yet.</td></tr>`}</tbody></table></div>
@@ -2417,6 +2438,110 @@ $("#userlink-form").addEventListener("submit", async (e) => {
     p_user: userLinkCtx.userId, p_role: role, p_record: recordId,
   });
   if (error) { setMsg("userlink-msg", "⚠️ " + error.message, false); return; }
+  closeOverlays();
+  await loadData();
+  renderPeople();
+});
+
+/* ---------- Add a user (trustee) — via the manage-users Edge Function ---------- */
+// The function holds the admin rights needed to create a login; the app never does.
+async function manageUsers(payload) {
+  try {
+    const { data, error } = await sb.functions.invoke("manage-users", { body: payload });
+    if (error) {
+      return { error: /not found|404|Failed to send/i.test(error.message || "")
+        ? "The manage-users function isn't deployed yet (see SETUP.md)." : error.message };
+    }
+    return data || { error: "No response from the server." };
+  } catch (e) {
+    return { error: "Could not reach the server: " + (e.message || e) };
+  }
+}
+
+function openAddUserModal() {
+  $("#adduser-form").reset();
+  $("#adduser-role").innerHTML = ROLE_ORDER.map((r) =>
+    `<option value="${r}" ${r === "owner" ? "selected" : ""}>${ROLE_LABEL[r]}</option>`).join("");
+  $("#adduser-msg").textContent = "";
+  fillAddUserRecords();
+  $("#adduser-modal").classList.add("active");
+}
+
+function fillAddUserRecords() {
+  const role = $("#adduser-role").value;
+  const reg = ROLE_REGISTRY[role];
+  const recs = linkableRecords(role, null);   // only records nobody is linked to yet
+  $("#adduser-record").innerHTML = `<option value="">— choose the ${esc(reg.noun)} —</option>` +
+    recs.map((r) => {
+      const hint = recordHint(role, r);
+      return `<option value="${r.id}">${esc(recordLabel(role, r))}${hint ? " · " + esc(hint) : ""}</option>`;
+    }).join("");
+  $("#adduser-none").hidden = recs.length > 0;
+  $("#adduser-none-text").textContent =
+    `There is no unlinked ${reg.noun} record yet. Add the person to the ${reg.noun} registry first.`;
+  $("#adduser-goto").dataset.view = reg.view;
+}
+
+// Picking a record pre-fills name and email (only into empty boxes).
+function prefillAddUserFromRecord() {
+  const role = $("#adduser-role").value;
+  const rec = (ROLE_REGISTRY[role].list() || []).find((r) => r.id === $("#adduser-record").value);
+  if (!rec) return;
+  if (!$("#adduser-name").value.trim()) $("#adduser-name").value = recordLabel(role, rec);
+  if (!$("#adduser-email").value.trim() && rec.email) $("#adduser-email").value = rec.email;
+}
+
+$("#adduser-role").addEventListener("change", fillAddUserRecords);
+$("#adduser-record").addEventListener("change", prefillAddUserFromRecord);
+
+$("#adduser-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const payload = {
+    action: "create",
+    role: $("#adduser-role").value,
+    record_id: $("#adduser-record").value,
+    full_name: $("#adduser-name").value.trim(),
+    email: $("#adduser-email").value.trim(),
+    password: $("#adduser-password").value,
+  };
+  if (!payload.record_id) { setMsg("adduser-msg", "⚠️ Choose the registry record for this user.", false); return; }
+  if (!/^\S+@\S+\.\S+$/.test(payload.email)) { setMsg("adduser-msg", "⚠️ Please enter a valid email address.", false); return; }
+  if (payload.password.length < 6) { setMsg("adduser-msg", "⚠️ The password must be at least 6 characters.", false); return; }
+  const btn = $("#adduser-save"); btn.disabled = true;
+  setMsg("adduser-msg", "Creating the user…", true);
+  const res = await manageUsers(payload);
+  btn.disabled = false;
+  if (res.error) { setMsg("adduser-msg", "⚠️ " + res.error, false); return; }
+  closeOverlays();
+  await loadData();
+  renderPeople();
+});
+
+/* ---------- Deactivate / reactivate a user (in-app confirmation) ---------- */
+let userActiveCtx = { userId: null, action: null };
+
+function openUserActiveModal(userId, action) {
+  const p = state.profiles.find((x) => x.id === userId);
+  if (!p) return;
+  userActiveCtx = { userId, action };
+  const who = esc(p.full_name || p.email);
+  const off = action === "deactivate";
+  $("#useractive-title").textContent = off ? "Deactivate user" : "Reactivate user";
+  $("#useractive-text").innerHTML = off
+    ? `<strong>${who}</strong> will no longer be able to sign in or use the system in any way. Their registry record and history are kept, and you can reactivate them later.`
+    : `<strong>${who}</strong> will be able to sign in and use the system again with their existing role and record.`;
+  $("#useractive-confirm").textContent = off ? "Deactivate" : "Reactivate";
+  $("#useractive-confirm").className = off ? "btn danger" : "btn primary";
+  $("#useractive-msg").textContent = "";
+  $("#useractive-modal").classList.add("active");
+}
+
+$("#useractive-confirm").addEventListener("click", async () => {
+  const btn = $("#useractive-confirm"); btn.disabled = true;
+  setMsg("useractive-msg", "Saving…", true);
+  const res = await manageUsers({ action: userActiveCtx.action, user_id: userActiveCtx.userId });
+  btn.disabled = false;
+  if (res.error) { setMsg("useractive-msg", "⚠️ " + res.error, false); return; }
   closeOverlays();
   await loadData();
   renderPeople();
@@ -2903,6 +3028,11 @@ document.addEventListener("click", async (e) => {
 
   const ulBtn = t.closest("[data-user-link]");
   if (ulBtn) openUserLinkModal(ulBtn.dataset.userLink);
+  if (t.closest("[data-user-add]")) openAddUserModal();
+  const udBtn = t.closest("[data-user-deactivate]");
+  if (udBtn) openUserActiveModal(udBtn.dataset.userDeactivate, "deactivate");
+  const urBtn = t.closest("[data-user-reactivate]");
+  if (urBtn) openUserActiveModal(urBtn.dataset.userReactivate, "reactivate");
   if (t.dataset.editUnit) openUnitModal(state.units.find((u) => u.id === t.dataset.editUnit));
   if (t.dataset.editLayout) openLayoutModal(state.layouts.find((l) => l.id === t.dataset.editLayout));
 

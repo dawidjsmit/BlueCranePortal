@@ -108,6 +108,24 @@ in the SQL Editor the same way:
   as a hint wherever a status appears. Starter descriptions are filled in;
   re-running never overwrites your edits. Statuses can't be added or removed.
 
+- **`25_deactivate_users.sql`** — lets a trustee deactivate / reactivate a
+  user (Users screen). Adds `profiles.deactivated_at`; a deactivated trustee
+  loses trustee powers at once; nobody can deactivate themselves or the last
+  active trustee. Needs the `manage-users` Edge Function below.
+
+### `manage-users` Edge Function (Add user / Deactivate)
+
+The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons
+need admin rights that must never be in the public app, so they run in an
+Edge Function. No secrets to add — Supabase provides its own keys.
+
+1. **Edge Functions → Create a new function**
+2. Name it exactly **`manage-users`**
+3. Paste the entire contents of `supabase/functions/manage-users/index.ts`
+4. Click **Deploy**.
+
+Only an active trustee can call it; it checks this itself.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'

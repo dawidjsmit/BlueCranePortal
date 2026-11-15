@@ -51,6 +51,19 @@ Six login roles (enum `app_role`):
 New sign-ups start `pending`; a trustee approves them and links them to a unit.
 The first trustee is promoted manually once via SQL.
 
+**Adding users:** a trustee can create a login on the Users screen
+(**+ Add user**: role, an unlinked registry record, name, email, password of at
+least 6 characters). The user is approved and linked straight away. This runs
+in the `manage-users` Edge Function (service role stays server-side).
+
+**Deactivation:** a trustee can deactivate a user (`profiles.deactivated_at`
+set + Supabase Auth ban), and reactivate them later. A deactivated user cannot
+sign in, sees an "Account deactivated" screen if a session is still open, and
+a deactivated trustee loses `is_trustee()` at once. An already-issued access
+token can stay valid until it expires (up to ~1 hour). Guards (trigger
+`profiles_guard_role_status`): only trustees change role/status/active state,
+no self-deactivation, never the last active trustee.
+
 ---
 
 ## 3. Data model
@@ -199,6 +212,8 @@ Ticket types, Users.
   pets, and (owners/trustees) linked users. Global **Owners/Tenants/Occupants/
   Pets** tabs list across all units with a clickable chip back to the unit.
 - **Layouts / Ticket types / Users** — trustee maintenance screens.
+- **Users** — list (pending, active, deactivated), approve & link, **+ Add
+  user**, Deactivate / Reactivate (in-app confirmation).
 
 ---
 
