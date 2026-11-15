@@ -407,7 +407,7 @@ function navGroups() {
         { id: "layouts", label: "Layouts", ico: "📐" },
         { id: "areagroups", label: "Communal entity groupings", ico: "🗂️" },
         { id: "areatypes", label: "Communal entity types", ico: "🏷️" },
-        { id: "gardentasks", label: "Gardening tasks", ico: "🧰" },
+        { id: "gardentasks", label: "Gardening tasks", ico: "✂️" },
         { id: "planstatuses", label: "Plan statuses", ico: "🚩" },
         { id: "projectstatuses", label: "Project statuses", ico: "📌" },
         { id: "ticketstatuses", label: "Ticket statuses", ico: "🚦" },
@@ -2238,7 +2238,7 @@ function renderGardenTasks() {
   </tr>`).join("");
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🧰 Gardening tasks</h2>
+      <div class="panel-head"><h2>✂️ Gardening tasks</h2>
         <button class="btn primary small" id="add-gtask-btn">+ Add task</button></div>
       <p class="muted tiny">The typical tasks gardeners choose from on the Gardening Report.</p>
       <div class="table-wrap"><table><thead><tr>
@@ -3825,9 +3825,9 @@ async function openTicket(id) {
   // Which status a trustee can move the ticket to from here.
   //   Parked    -> Busy or Cancelled (not straight to Complete)
   //   Cancelled -> Busy only
-  //   Complete  -> Busy, Cancelled or Parked
+  //   Complete  -> Busy only
   //   otherwise -> Complete, Cancelled or Parked
-  const NEXT_STATUSES = { parked: ["busy", "cancelled"], cancelled: ["busy"], complete: ["busy", "cancelled", "parked"] };
+  const NEXT_STATUSES = { parked: ["busy", "cancelled"], cancelled: ["busy"], complete: ["busy"] };
   const trusteeStatusBtns = isTrustee() && !isDraft
     ? (NEXT_STATUSES[t.status] || ["complete", "cancelled", "parked"])
         .map((s) => {

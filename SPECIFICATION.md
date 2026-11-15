@@ -65,7 +65,7 @@ then the history newest first. Posting as the holder marks the ticket Busy
 reopen a Parked / Complete / Cancelled ticket with ▶️ Mark Busy. "This ticket relates to" is picked with icon tiles.
 
 **Ticket status changes (trustees):** Parked → Busy or Cancelled; Cancelled → Busy;
-Complete → Busy, Cancelled or Parked; otherwise → Complete, Cancelled or Parked.
+Complete → Busy; otherwise → Complete, Cancelled or Parked.
 
 **Gardening Report** (menu group "Daily Working"; trustees and gardeners) — report
 lines: action date, gardening task (`gardening_tasks`, Admin → Gardening tasks),
