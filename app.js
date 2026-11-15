@@ -407,6 +407,7 @@ function navGroups() {
         { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
         { id: "aiengagement", label: "AI engagement", ico: "✨" },
         { id: "users", label: "Users", ico: "👥" },
+        { id: "activity", label: "User activity", ico: "📜" },
       ],
     });
   } else if (isResident() && myUnitIds().size) {
@@ -447,7 +448,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -469,6 +470,7 @@ async function loadData() {
     isTrustee() ? sb.from("service_providers").select("*") : Promise.resolve({ data: [] }),
     sb.from("unit_owners").select("*"),
     sb.from("ticket_status_info").select("*"),
+    isTrustee() ? sb.from("user_last_login").select("*") : Promise.resolve({ data: [] }),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -493,6 +495,7 @@ async function loadData() {
   };
   state.unitOwners = unitOwners.data || [];
   state.ticketStatusInfo = ticketStatusInfo.data || [];
+  state.lastLogin = Object.fromEntries((lastLogins.data || []).map((r) => [r.profile_id, r.last_login]));
   aiEngagementRows = []; // force AI-engagement list to reload fresh
 }
 
@@ -591,6 +594,7 @@ function showView(name) {
     "reg-providers": () => renderRegistry("providers"),
     aiengagement: renderAiEngagement,
     users: renderPeople,
+    activity: renderActivity,
   }[name];
   if (render) render();
 }
@@ -2367,6 +2371,9 @@ function renderPeople() {
       <td>${p.deactivated_at
         ? `<span class="pill rejected">Deactivated</span><div class="muted tiny">${fmtDay(p.deactivated_at)}</div>`
         : `<span class="pill ${p.status}">${p.status}</span>`}</td>
+      <td style="white-space:nowrap">${state.lastLogin && state.lastLogin[p.id]
+        ? fmtDateTimeFull(state.lastLogin[p.id]) : '<span class="muted tiny">never</span>'}
+        <button class="icon-btn" data-user-activity="${p.id}" title="View this user's activity" aria-label="View this user's activity">📜</button></td>
       <td style="text-align:right;white-space:nowrap">
         ${p.deactivated_at
           ? `<button class="btn primary small" data-user-reactivate="${p.id}">Reactivate</button>`
@@ -2382,9 +2389,99 @@ function renderPeople() {
       <div class="panel-head"><h2>👥 Users &amp; approvals</h2><button class="btn primary small" data-user-add>+ Add user</button></div>
       <p class="muted tiny">Each user is linked to one registry record that matches their role. Their units come from that record — to change a user's units, edit the record. Add the person to the right registry first, then link them here or use + Add user. A deactivated user can no longer sign in or use the system.</p>
       <div class="table-wrap"><table><thead><tr>
-        <th>User</th><th>Role</th><th>Registry record</th><th>Units (from record)</th><th>Status</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="6" class="empty">No one yet.</td></tr>`}</tbody></table></div>
+        <th>User</th><th>Role</th><th>Registry record</th><th>Units (from record)</th><th>Status</th><th>Last log in</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="7" class="empty">No one yet.</td></tr>`}</tbody></table></div>
     </div>`;
+}
+
+/* ---------- User activity log (trustee) ----------
+   For now only log-ins are recorded (by a database trigger, migration 26). */
+const ACTIVITY_LABEL = { login: "Logged in" };
+let activityFilter = null;     // { from: "yyyy-mm-dd", to: "yyyy-mm-dd", user: "" }
+let activityPreset = false;    // true when opened from a user's row on the Users screen
+
+function isoDay(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+// Default: the last 7 days (today and the 6 days before).
+function defaultActivityFilter(user = "") {
+  const today = new Date();
+  const from = new Date(today); from.setDate(today.getDate() - 6);
+  return { from: isoDay(from), to: isoDay(today), user };
+}
+// Local midnight at the start of a yyyy-mm-dd day.
+function dayStart(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+function fmtDateTimeFull(ts) {
+  return new Date(ts).toLocaleString(undefined,
+    { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function openUserActivity(userId) {
+  activityFilter = defaultActivityFilter(userId);
+  activityPreset = true;
+  showView("activity");
+}
+
+function renderActivity() {
+  if (!activityPreset || !activityFilter) activityFilter = defaultActivityFilter();
+  activityPreset = false;
+  const f = activityFilter;
+  const users = state.profiles.slice().sort((a, b) =>
+    String(a.full_name || a.email).localeCompare(String(b.full_name || b.email)));
+  const userOpts = `<option value="">All users</option>` + users.map((p) =>
+    `<option value="${p.id}" ${f.user === p.id ? "selected" : ""}>${esc(p.full_name || p.email)}${p.full_name ? " · " + esc(p.email) : ""}${p.deactivated_at ? " (deactivated)" : ""}</option>`).join("");
+
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>📜 User activity</h2>
+        <span class="hint">Latest first</span></div>
+      <div class="filters">
+        <label>Date from <input type="date" id="act-from" value="${esc(f.from)}" /></label>
+        <label>Date to <input type="date" id="act-to" value="${esc(f.to)}" /></label>
+        <label>User <select id="act-user">${userOpts}</select></label>
+      </div>
+      <div id="act-list"><div class="empty">Loading…</div></div>
+    </div>`;
+
+  const onChange = () => {
+    activityFilter = { from: $("#act-from").value, to: $("#act-to").value, user: $("#act-user").value };
+    loadActivityList();
+  };
+  ["#act-from", "#act-to", "#act-user"].forEach((s) => $(s).addEventListener("change", onChange));
+  loadActivityList();
+}
+
+async function loadActivityList() {
+  const f = activityFilter;
+  const box = $("#act-list");
+  if (f.from && f.to && f.from > f.to) {
+    box.innerHTML = `<div class="empty">"Date from" is after "Date to".</div>`;
+    return;
+  }
+  let q = sb.from("user_activity").select("*").order("occurred_at", { ascending: false }).limit(2000);
+  if (f.from) q = q.gte("occurred_at", dayStart(f.from).toISOString());
+  if (f.to) { const end = dayStart(f.to); end.setDate(end.getDate() + 1); q = q.lt("occurred_at", end.toISOString()); }
+  if (f.user) q = q.eq("profile_id", f.user);
+  const { data, error } = await q;
+  if (activityFilter !== f || !$("#act-list")) return; // filters changed while loading
+  if (error) {
+    box.innerHTML = `<div class="empty">⚠️ ${esc(/user_activity/.test(error.message)
+      ? "The activity log isn't set up yet — run 26_user_activity_log.sql (see SETUP.md)." : error.message)}</div>`;
+    return;
+  }
+  const rows = (data || []).map((a) => {
+    const p = state.profiles.find((x) => x.id === a.profile_id);
+    return `<tr>
+      <td style="white-space:nowrap">${fmtDateTimeFull(a.occurred_at)}</td>
+      <td>${esc(p ? (p.full_name || p.email) : "(unknown user)")}${p && p.full_name ? `<div class="muted tiny">${esc(p.email)}</div>` : ""}</td>
+      <td>${esc(ACTIVITY_LABEL[a.activity] || a.activity)}</td>
+    </tr>`;
+  }).join("");
+  box.innerHTML = `
+    <p class="muted tiny">${(data || []).length} ${(data || []).length === 1 ? "entry" : "entries"}${(data || []).length === 2000 ? " (showing the latest 2000 — narrow the dates to see older ones)" : ""}</p>
+    <div class="table-wrap"><table><thead><tr>
+      <th>When</th><th>User</th><th>Activity</th>
+    </tr></thead><tbody>${rows || `<tr><td colspan="3" class="empty">No activity in this period.</td></tr>`}</tbody></table></div>`;
 }
 
 /* ---------- Link a user to their registry record (role + record) ---------- */
@@ -3029,6 +3126,8 @@ document.addEventListener("click", async (e) => {
   const ulBtn = t.closest("[data-user-link]");
   if (ulBtn) openUserLinkModal(ulBtn.dataset.userLink);
   if (t.closest("[data-user-add]")) openAddUserModal();
+  const uaBtn = t.closest("[data-user-activity]");
+  if (uaBtn) openUserActivity(uaBtn.dataset.userActivity);
   const udBtn = t.closest("[data-user-deactivate]");
   if (udBtn) openUserActiveModal(udBtn.dataset.userDeactivate, "deactivate");
   const urBtn = t.closest("[data-user-reactivate]");

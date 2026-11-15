@@ -213,7 +213,13 @@ Ticket types, Users.
   Pets** tabs list across all units with a clickable chip back to the unit.
 - **Layouts / Ticket types / Users** — trustee maintenance screens.
 - **Users** — list (pending, active, deactivated), approve & link, **+ Add
-  user**, Deactivate / Reactivate (in-app confirmation).
+  user**, Deactivate / Reactivate (in-app confirmation), Last log in column with
+  a 📜 shortcut to that user's activity.
+- **User activity** (Admin) — log of sign-ins, latest first; defaults to the
+  last 7 days; filters: date from, date to, user (including deactivated users).
+  Rows come from `user_activity`, written only by trigger `on_auth_user_login`
+  (fires when `auth.users.last_sign_in_at` changes; migration 26). Later this
+  table can hold other activity types.
 
 ---
 
