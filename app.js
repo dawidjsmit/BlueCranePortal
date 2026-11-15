@@ -791,12 +791,31 @@ function renderAllTickets() {
         <button class="btn primary small" data-new-ticket>+ Log a ticket</button></div>
       <div class="filters"><label>Status <select id="all-ticket-status">${statusOpts}</select></label>
         ${allTicketsStatus && statusDesc(allTicketsStatus) ? `<span class="muted tiny">${esc(statusDesc(allTicketsStatus))}</span>` : ""}</div>
-      <div class="request-list">
-        ${list.length ? list.map(ticketCard).join("") : `<div class="empty">No tickets match.</div>`}
-      </div>
+      <div class="table-wrap"><table class="ticket-grid"><thead><tr>
+        <th>Logged</th><th>Heading</th><th>Unit / entity</th><th>Type</th><th>Assigned to</th><th>Logged by</th><th>Status</th><th></th>
+      </tr></thead><tbody>
+        ${list.length ? list.map(ticketRow).join("") : `<tr><td colspan="8" class="empty">No tickets match.</td></tr>`}
+      </tbody></table></div>
     </div>`;
   const sel = $("#all-ticket-status");
   if (sel) sel.addEventListener("change", (e) => { allTicketsStatus = e.target.value; renderAllTickets(); });
+}
+
+// One row of the All Tickets grid. Clicking the row opens the ticket;
+// the 🗑️ button (trustees only) deletes it after an in-app confirmation.
+function ticketRow(t) {
+  const open = `data-open-ticket="${t.id}"`;
+  return `<tr class="clickable-row">
+    <td ${open} style="white-space:nowrap">${fmtDay(t.created_at)}</td>
+    <td ${open}><strong>${esc(t.heading)}</strong></td>
+    <td ${open}>${esc(ticketTargetLabel(t))}</td>
+    <td ${open}>${esc(ticketTypeName(t.type_id))}</td>
+    <td ${open}>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</td>
+    <td ${open}>${esc(loggerName(t))}</td>
+    <td ${open}>${statusPill(t.status)}</td>
+    <td style="text-align:right">${isTrustee()
+      ? `<button class="icon-btn" data-del-ticket-row="${t.id}" title="Delete ticket" aria-label="Delete ticket">🗑️</button>` : ""}</td>
+  </tr>`;
 }
 
 function renderUnits() {
@@ -3559,16 +3578,43 @@ async function setTicketStatus(id, status) {
   refreshActiveView();
 }
 
-async function deleteTicket(id) {
-  if (!confirm("Delete this draft ticket?")) return;
-  // Remove its photos from storage first.
-  const photos = state.ticketPhotos.filter((p) => p.ticket_id === id);
-  for (const p of photos) await deleteFile(p.storage_path);
-  await sb.from("tickets").delete().eq("id", id);
+let deletingTicketId = null;
+
+function deleteTicket(id) {
+  const t = state.tickets.find((x) => x.id === id);
+  if (!t) return;
+  deletingTicketId = id;
+  $("#ticketdel-text").innerHTML = `<strong>${esc(t.heading)}</strong> (${esc(ticketTargetLabel(t))}) will be deleted for good, together with its feedback and photos. This can't be undone.`;
+  $("#ticketdel-msg").textContent = "";
+  $("#ticketdel-confirm").disabled = false;
+  $("#ticketdel-modal").classList.add("active");
+}
+
+$("#ticketdel-cancel").addEventListener("click", () => $("#ticketdel-modal").classList.remove("active"));
+$("#ticketdel-confirm").addEventListener("click", async () => {
+  const id = deletingTicketId;
+  const btn = $("#ticketdel-confirm"); btn.disabled = true;
+  setMsg("ticketdel-msg", "Deleting…", true);
+  // Collect photo files (ticket + feedback) before the rows are gone.
+  const paths = state.ticketPhotos.filter((p) => p.ticket_id === id).map((p) => p.storage_path);
+  const { data: fb } = await sb.from("ticket_feedback").select("id").eq("ticket_id", id);
+  const fbIds = (fb || []).map((f) => f.id);
+  if (fbIds.length) {
+    const { data: fphotos } = await sb.from("feedback_photos").select("storage_path").in("feedback_id", fbIds);
+    (fphotos || []).forEach((p) => paths.push(p.storage_path));
+  }
+  // Delete the ticket (feedback and photo records go with it).
+  const { data, error } = await sb.from("tickets").delete().eq("id", id).select("id");
+  if (error || !data || !data.length) {
+    btn.disabled = false;
+    setMsg("ticketdel-msg", "\u26a0\ufe0f " + (error ? error.message : "You're not allowed to delete this ticket."), false);
+    return;
+  }
+  for (const p of paths) { try { await deleteFile(p); } catch (_) { /* leftover file is harmless */ } }
   closeOverlays();
   await loadData();
   refreshActiveView();
-}
+});
 
 async function onTicketPhotoChosen(e, ticketId) {
   const file = e.target.files[0];
@@ -3791,6 +3837,8 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editTicket) openTicketModal(state.tickets.find((x) => x.id === t.dataset.editTicket));
   if (t.dataset.submitTicket) submitTicket(t.dataset.submitTicket);
   if (t.dataset.deleteTicket) deleteTicket(t.dataset.deleteTicket);
+  const delRow = t.closest("[data-del-ticket-row]");
+  if (delRow) deleteTicket(delRow.dataset.delTicketRow);
   if (t.dataset.ticketStatus) {
     const [id, s] = t.dataset.ticketStatus.split("|");
     setTicketStatus(id, s);
