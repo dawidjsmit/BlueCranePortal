@@ -450,6 +450,8 @@ tbody tr:hover { background: #f7f9fc; }
 #reassign-msg:empty { display: none; }
 /* Icon actions in the ticket window (edit, complete, cancel, park) */
 .ticket-act { font-size: 18px; }
+.ticket-send { background: #e8f0fe; }
+.ticket-send:hover { background: #d2e3fc; }
 
 /* "This ticket relates to" tiles */
 .relates-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }

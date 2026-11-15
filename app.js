@@ -3484,10 +3484,10 @@ async function openTicket(id) {
 
     <div class="detail-actions">
       ${loggerCanEdit ? `
-        <label class="btn ghost small upload-label">+ Photo<input type="file" accept="image/*" id="ticket-photo-input" hidden /></label>
-        <button class="btn ghost small" data-edit-ticket="${t.id}">Edit</button>
-        <button class="btn primary small" data-submit-ticket="${t.id}">Submit &amp; send</button>
-        <button class="btn ghost small" data-delete-ticket="${t.id}" style="color:var(--open)">Delete</button>` : ""}
+        <label class="icon-btn ticket-act upload-label" title="Add a photo" aria-label="Add a photo">📷<input type="file" accept="image/*" id="ticket-photo-input" hidden /></label>
+        <button class="icon-btn ticket-act" data-edit-ticket="${t.id}" title="Edit" aria-label="Edit">✏️</button>
+        <button class="icon-btn ticket-act ticket-send" data-submit-ticket="${t.id}" title="Submit &amp; send" aria-label="Submit &amp; send">📤</button>
+        <button class="icon-btn ticket-act" data-delete-ticket="${t.id}" title="Delete" aria-label="Delete">🗑️</button>` : ""}
       ${isTrustee() && !isDraft ? `<button class="icon-btn ticket-act" data-edit-ticket="${t.id}" title="Edit details" aria-label="Edit details">✏️</button>` : ""}
       ${trusteeStatusBtns}
     </div>
