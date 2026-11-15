@@ -7,6 +7,7 @@
 //                 registry record, in one go
 //    deactivate — block a user from using the system (sign-in banned)
 //    reactivate — undo a deactivation
+//    update_email — change the email a user signs in with
 //
 //  DEPLOY (no command line needed):
 //    Supabase Dashboard -> Edge Functions -> Create a new function
@@ -141,6 +142,37 @@ Deno.serve(async (req) => {
           .update({ deactivated_at: deactivating ? null : new Date().toISOString() })
           .eq("id", userId);
         return fail("Could not update the login: " + banErr.message);
+      }
+      return json({ ok: true });
+    }
+
+    // ---------------- update_email ----------------
+    if (action === "update_email") {
+      const userId = String(body.user_id ?? "");
+      const email = String(body.email ?? "").trim().toLowerCase();
+      if (!userId) return fail("No user chosen.");
+      if (!/^\S+@\S+\.\S+$/.test(email)) return fail("Please enter a valid email address.");
+
+      const { data: target } = await admin.auth.admin.getUserById(userId);
+      if (!target?.user) return fail("User not found.");
+      const oldEmail = target.user.email ?? "";
+      if (oldEmail.toLowerCase() === email) return json({ ok: true });
+
+      // Change the sign-in email straight away (no confirmation email).
+      const { error: emailErr } = await admin.auth.admin.updateUserById(userId, {
+        email, email_confirm: true,
+      });
+      if (emailErr) {
+        if (/already|registered|exists/i.test(emailErr.message)) {
+          return fail("Another user already signs in with that email address.");
+        }
+        return fail("Could not change the email: " + emailErr.message);
+      }
+      // Keep the profile's copy in step (as the caller, so trustee rules apply).
+      const { error: profErr } = await asCaller.from("profiles").update({ email }).eq("id", userId);
+      if (profErr) {
+        await admin.auth.admin.updateUserById(userId, { email: oldEmail, email_confirm: true });
+        return fail("Could not change the email, so nothing was saved: " + profErr.message);
       }
       return json({ ok: true });
     }

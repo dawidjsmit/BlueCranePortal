@@ -131,6 +131,10 @@ Edge Function. No secrets to add — Supabase provides its own keys.
 
 Only an active trustee can call it; it checks this itself.
 
+**Updating it later:** when a new version of `index.ts` is released, open
+**Edge Functions → manage-users → Code**, replace everything with the new
+file, and click **Deploy** again.
+
 ## Step 7 — "Ask the rules" AI assistant (Edge Function)
 
 The Conduct Rules screen has an AI assistant that answers residents'

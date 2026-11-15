@@ -851,7 +851,7 @@ function unitUsersTable(unitId) {
       const p = state.profiles.find((x) => x.id === pid);
       const name = p ? (p.full_name || p.email) : fullName(rec);
       return `<tr>
-        <td><strong>${esc(name)}</strong>${p && p.full_name ? `<div class="muted tiny">${esc(p.email)}</div>` : ""}</td>
+        <td><strong>${esc(name)}</strong>${p && realName(p) ? `<div class="muted tiny">${esc(p.email)}</div>` : ""}</td>
         <td>${p ? `<span class="role-chip ${p.role}">${esc(ROLE_LABEL[p.role] || p.role)}</span>` : "—"}</td>
         <td>${esc(ROLE_LABEL[as])}</td>
       </tr>`;
@@ -2139,6 +2139,13 @@ async function renderAiEngagement(filter = "") {
   });
 }
 
+// The user's name, or "" when none was captured (older accounts had their
+// email copied into full_name when they first signed in).
+function realName(p) {
+  const n = String((p && p.full_name) || "").trim();
+  return n && n.toLowerCase() !== String(p.email || "").toLowerCase() ? n : "";
+}
+
 function askUserName(uid) {
   const p = state.profiles.find((x) => x.id === uid);
   return p ? (p.full_name || p.email) : "(unknown user)";
@@ -2364,7 +2371,7 @@ function renderPeople() {
       ? units.map((id) => unitLinkChip(id)).join(" ")
       : `<span class="muted tiny">${["gardener", "service_provider"].includes(p.role) ? "not unit-linked" : "—"}</span>`;
     return `<tr>
-      <td>${esc(p.full_name || "—")}${p.id === me.id ? ' <span class="muted tiny">(you)</span>' : ""}<div class="muted tiny">${esc(p.email)}</div></td>
+      <td>${esc(realName(p) || "—")}${p.id === me.id ? ' <span class="muted tiny">(you)</span>' : ""}<div class="muted tiny">${esc(p.email)}</div></td>
       <td><span class="role-chip ${p.role}">${esc(ROLE_LABEL[p.role] || p.role)}</span></td>
       <td>${recCell}</td>
       <td>${unitCell}</td>
@@ -2376,10 +2383,11 @@ function renderPeople() {
         <button class="icon-btn" data-user-activity="${p.id}" title="View this user's activity" aria-label="View this user's activity">📜</button></td>
       <td style="text-align:right;white-space:nowrap">
         ${p.deactivated_at
-          ? `<button class="btn primary small" data-user-reactivate="${p.id}">Reactivate</button>`
-          : `<button class="btn ${rec && p.status === "approved" ? "ghost" : "primary"} small" data-user-link="${p.id}">
-          ${p.status !== "approved" ? "Approve & link" : (rec ? "Change" : "Link record")}</button>
-        ${p.id !== me.id ? `<button class="btn small btn-danger-text" data-user-deactivate="${p.id}">Deactivate</button>` : ""}`}
+          ? `<button class="icon-btn" data-user-reactivate="${p.id}" title="Reactivate user" aria-label="Reactivate user">♻️</button>`
+          : `${rec && p.status === "approved"
+            ? `<button class="icon-btn" data-user-link="${p.id}" title="Edit user" aria-label="Edit user">✏️</button>`
+            : `<button class="btn primary small" data-user-link="${p.id}">${p.status !== "approved" ? "Approve & link" : "Link record"}</button>`}
+        ${p.id !== me.id ? `<button class="icon-btn" data-user-deactivate="${p.id}" title="Deactivate user" aria-label="Deactivate user">🚫</button>` : ""}`}
       </td>
     </tr>`;
   }).join("");
@@ -2429,7 +2437,7 @@ function renderActivity() {
   const users = state.profiles.slice().sort((a, b) =>
     String(a.full_name || a.email).localeCompare(String(b.full_name || b.email)));
   const userOpts = `<option value="">All users</option>` + users.map((p) =>
-    `<option value="${p.id}" ${f.user === p.id ? "selected" : ""}>${esc(p.full_name || p.email)}${p.full_name ? " · " + esc(p.email) : ""}${p.deactivated_at ? " (deactivated)" : ""}</option>`).join("");
+    `<option value="${p.id}" ${f.user === p.id ? "selected" : ""}>${esc(p.full_name || p.email)}${realName(p) ? " · " + esc(p.email) : ""}${p.deactivated_at ? " (deactivated)" : ""}</option>`).join("");
 
   $("#main").innerHTML = `
     <div class="panel">
@@ -2473,7 +2481,7 @@ async function loadActivityList() {
     const p = state.profiles.find((x) => x.id === a.profile_id);
     return `<tr>
       <td style="white-space:nowrap">${fmtDateTimeFull(a.occurred_at)}</td>
-      <td>${esc(p ? (p.full_name || p.email) : "(unknown user)")}${p && p.full_name ? `<div class="muted tiny">${esc(p.email)}</div>` : ""}</td>
+      <td>${esc(p ? (p.full_name || p.email) : "(unknown user)")}${p && realName(p) ? `<div class="muted tiny">${esc(p.email)}</div>` : ""}</td>
       <td>${esc(ACTIVITY_LABEL[a.activity] || a.activity)}</td>
     </tr>`;
   }).join("");
@@ -2491,7 +2499,9 @@ function openUserLinkModal(userId) {
   const p = state.profiles.find((x) => x.id === userId);
   if (!p) return;
   userLinkCtx = { userId };
-  $("#userlink-who").textContent = `${p.full_name || p.email}${p.full_name ? " · " + p.email : ""}`;
+  $("#userlink-email").value = p.email || "";
+  const curRec = recordForUser(p);
+  $("#userlink-name").value = realName(p) || (curRec ? recordLabel(p.role, curRec) : "");
   $("#userlink-role").innerHTML = ROLE_ORDER.map((r) =>
     `<option value="${r}" ${p.role === r ? "selected" : ""}>${ROLE_LABEL[r]}</option>`).join("");
   $("#userlink-msg").textContent = "";
@@ -2522,6 +2532,11 @@ function fillUserLinkRecords() {
 }
 
 $("#userlink-role").addEventListener("change", fillUserLinkRecords);
+$("#userlink-record").addEventListener("change", () => {
+  const role = $("#userlink-role").value;
+  const rec = (ROLE_REGISTRY[role].list() || []).find((r) => r.id === $("#userlink-record").value);
+  if (rec && !$("#userlink-name").value.trim()) $("#userlink-name").value = recordLabel(role, rec);
+});
 
 $("#userlink-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2530,6 +2545,21 @@ $("#userlink-form").addEventListener("submit", async (e) => {
   if (!recordId) {
     setMsg("userlink-msg", `⚠️ Choose the ${ROLE_REGISTRY[role].noun} record to link this user to.`, false);
     return;
+  }
+  const p = state.profiles.find((x) => x.id === userLinkCtx.userId);
+  const name = $("#userlink-name").value.trim();
+  if (!name) { setMsg("userlink-msg", "⚠️ Please enter the user's full name.", false); return; }
+  const email = $("#userlink-email").value.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) { setMsg("userlink-msg", "\u26a0\ufe0f Please enter a valid email address.", false); return; }
+  if (email !== String(p.email || "").toLowerCase()) {
+    // The sign-in email lives in Supabase Auth, so this goes via the Edge Function.
+    setMsg("userlink-msg", "Changing the email\u2026", true);
+    const res = await manageUsers({ action: "update_email", user_id: p.id, email });
+    if (res.error) { setMsg("userlink-msg", "\u26a0\ufe0f " + res.error, false); return; }
+  }
+  if (name !== (p.full_name || "")) {
+    const { error: nameErr } = await sb.from("profiles").update({ full_name: name }).eq("id", p.id);
+    if (nameErr) { setMsg("userlink-msg", "⚠️ " + nameErr.message, false); return; }
   }
   const { error } = await sb.rpc("link_user_to_record", {
     p_user: userLinkCtx.userId, p_role: role, p_record: recordId,

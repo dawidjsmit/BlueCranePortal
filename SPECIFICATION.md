@@ -56,6 +56,12 @@ The first trustee is promoted manually once via SQL.
 least 6 characters). The user is approved and linked straight away. This runs
 in the `manage-users` Edge Function (service role stays server-side).
 
+**Editing a user** (✏️): full name, sign-in email, role and registry record.
+An email change goes through `manage-users` (`update_email`): Supabase Auth
+email is changed immediately without a confirmation email, `profiles.email`
+is kept in step, password and sessions are unaffected. The registry record's
+own email is maintained separately.
+
 **Deactivation:** a trustee can deactivate a user (`profiles.deactivated_at`
 set + Supabase Auth ban), and reactivate them later. A deactivated user cannot
 sign in, sees an "Account deactivated" screen if a session is still open, and
