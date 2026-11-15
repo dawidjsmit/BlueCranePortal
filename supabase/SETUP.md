@@ -125,6 +125,10 @@ in the SQL Editor the same way:
 - **`28_communal_entity_groupings.sql`** — Communal entity groupings (name +
   description) and an optional grouping on each communal entity type.
 
+- **`29_projects.sql`** — Projects (trustee-only): project statuses list,
+  projects, their links to units / communal entities / service providers, and
+  an optional project on each ticket. Starter statuses are added once.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

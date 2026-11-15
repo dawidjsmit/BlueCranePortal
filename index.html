@@ -146,6 +146,7 @@
           <label>Communal entity type <select id="ticket-areatype"></select></label>
           <label>Communal entity <select id="ticket-area"></select></label>
         </div>
+        <label id="ticket-project-wrap" hidden>Project (optional) <select id="ticket-project"></select></label>
         <label>Heading <input id="ticket-heading" required placeholder="e.g. Leaking geyser" /></label>
         <label>Detailed description <textarea id="ticket-description" rows="4"></textarea></label>
         <p class="muted tiny">Choose <strong>either</strong> a Unit <strong>or</strong> a Communal entity (not both). After saving you can attach photos, then Submit &amp; send.</p>
@@ -153,6 +154,60 @@
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close>Cancel</button>
           <button type="submit" class="btn primary">Save ticket</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Project status maintenance modal -->
+  <div class="modal-overlay" id="projstatus-modal">
+    <div class="modal">
+      <h3 id="projstatus-modal-title">Add project status</h3>
+      <form id="projstatus-form">
+        <input type="hidden" id="projstatus-id" />
+        <label>Name <input id="projstatus-name" required placeholder="e.g. In progress" /></label>
+        <label>Description <textarea id="projstatus-description" rows="2" placeholder="e.g. Work is under way"></textarea></label>
+        <label class="check"><input id="projstatus-active" type="checkbox" checked /> Active (can be chosen on projects)</label>
+        <p id="projstatus-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save status</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Project add/edit modal -->
+  <div class="modal-overlay" id="project-modal">
+    <div class="modal wide">
+      <h3 id="project-modal-title">Add project</h3>
+      <form id="project-form" novalidate>
+        <input type="hidden" id="project-id" />
+        <label>Name <input id="project-name" autocomplete="off" placeholder="e.g. Repaint boundary wall" /></label>
+        <label>Description <textarea id="project-description" rows="3"></textarea></label>
+        <div class="row">
+          <label>Status <select id="project-status"></select></label>
+          <label>Run by trustee (optional) <select id="project-trustee"></select></label>
+        </div>
+        <div class="row">
+          <label>Created <input id="project-created" readonly /></label>
+          <label>Start date <input id="project-start" type="date" /></label>
+        </div>
+        <div class="row">
+          <label>Due date (optional) <input id="project-due" type="date" /></label>
+          <label>Finish date (optional) <input id="project-finish" type="date" /></label>
+        </div>
+        <label>Units</label>
+        <div class="checklist units" id="project-units"></div>
+        <label>Communal entities</label>
+        <div class="checklist" id="project-areas"></div>
+        <label>Service providers</label>
+        <div class="checklist" id="project-providers"></div>
+        <p class="muted tiny">Tickets are added from the project's screen, or from a ticket's Edit details.</p>
+        <p id="project-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary">Save project</button>
         </div>
       </form>
     </div>

@@ -218,6 +218,14 @@ Ticket types, Users.
   pets, and (owners/trustees) linked users. Global **Owners/Tenants/Occupants/
   Pets** tabs list across all units with a clickable chip back to the unit.
 - **Layouts / Ticket types / Users** — trustee maintenance screens.
+- **Projects** (Registry, trustee-only) — name, description, created (automatic),
+  start date, optional due and finish dates, status (`project_statuses`, managed on
+  **Project statuses** under Admin like ticket types), optional run-by trustee.
+  Links: units (`project_units`), communal entities (`project_areas`), service
+  providers (`project_providers`) — saved together via RPC `save_project`.
+  A ticket can belong to one project (`tickets.project_id`), set from the project
+  screen or the ticket's Edit details; only trustees can change it (trigger
+  `tickets_guard_project`). List filter: status.
 - **Communal entity groupings** (Admin) — name + description (`communal_area_groups`).
   Each communal entity type may have one grouping (`communal_area_types.group_id`);
   the types screen has a Grouping column and filter. Every type picker shows
