@@ -2077,7 +2077,8 @@ function renderPlan() {
     const n = planItemProjectIds(i.id).length;
     return `<button type="button" class="plan-card" data-edit-plan="${i.id}" title="${esc(i.description || i.name)}">
       <span class="plan-card-name">${esc(i.name)}</span>
-      <span class="plan-card-meta">${fmtMoney(i.budget)}${n ? ` · 🏗️ ${n}` : ""}</span>
+      <span class="plan-card-meta">Budget ${fmtMoney(i.budget)}${n ? ` · 🏗️ ${n}` : ""}</span>
+      ${Number(i.actual_spend) ? `<span class="plan-card-meta">Spent ${fmtMoney(i.actual_spend)}</span>` : ""}
       <span class="pill plan-status"${s?.description ? ` title="${esc(s.description)}"` : ""}>${esc(s ? s.name : "—")}</span>
     </button>`;
   };
@@ -2090,7 +2091,7 @@ function renderPlan() {
       </td>`).join("")}
     </tr>`).join("");
 
-  const total = (y) => state.planItems.filter((i) => i.year === y).reduce((s, i) => s + (Number(i.budget) || 0), 0);
+  const total = (y, field) => state.planItems.filter((i) => i.year === y).reduce((s, i) => s + (Number(i[field]) || 0), 0);
   const before = state.planItems.filter((i) => i.year < planStartYear).length;
   const after = state.planItems.filter((i) => i.year > lastYear).length;
 
@@ -2111,9 +2112,10 @@ function renderPlan() {
         ${years.map((y) => `<th class="${y === thisYear ? "plan-now" : ""}">${y}</th>`).join("")}
       </tr></thead><tbody>${body}</tbody>
       <tfoot><tr><th class="plan-group">Budget total</th>
-        ${years.map((y) => `<td class="plan-total${y === thisYear ? " plan-now" : ""}">${fmtMoney(total(y))}</td>`).join("")}
+        ${years.map((y) => `<td class="plan-total${y === thisYear ? " plan-now" : ""}">${fmtMoney(total(y, "budget"))}</td>`).join("")}
+      </tr><tr><th class="plan-group">Actual spend total</th>
+        ${years.map((y) => `<td class="plan-total${y === thisYear ? " plan-now" : ""}">${fmtMoney(total(y, "actual_spend"))}</td>`).join("")}
       </tr></tfoot></table></div>
-      <p class="muted tiny">Budget totals include every item in that year, whatever its status.</p>
     </div>`;
   $("#plan-prev").addEventListener("click", () => { planStartYear -= 1; renderPlan(); });
   $("#plan-next").addEventListener("click", () => { planStartYear += 1; renderPlan(); });
@@ -2128,6 +2130,7 @@ function openPlanModal(item, preset = {}) {
   $("#plan-description").value = item?.description || "";
   $("#plan-year").value = item?.year ?? preset.year ?? new Date().getFullYear();
   $("#plan-budget").value = item ? Number(item.budget) : "";
+  $("#plan-actual").value = item ? Number(item.actual_spend || 0) : "";
   const gid = item ? (item.group_id || "") : (preset.group || "");
   $("#plan-group").innerHTML = `<option value="">— no grouping —</option>` +
     state.areaGroups.map((g) => `<option value="${g.id}" ${gid === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("");
@@ -2150,15 +2153,18 @@ $("#plan-form").addEventListener("submit", async (e) => {
   const year = Number($("#plan-year").value);
   const budgetRaw = $("#plan-budget").value.trim().replace(/[\s,]/g, "");
   const budget = budgetRaw === "" ? 0 : Number(budgetRaw);
+  const actualRaw = $("#plan-actual").value.trim().replace(/[\s,]/g, "");
+  const actual = actualRaw === "" ? 0 : Number(actualRaw);
   const status = $("#plan-status").value;
   if (!name) { setMsg("plan-msg", "\u26a0\ufe0f Please enter the plan item name.", false); return; }
   if (!Number.isInteger(year) || year < 2000 || year > 2200) { setMsg("plan-msg", "\u26a0\ufe0f Please enter a year such as " + new Date().getFullYear() + ".", false); return; }
   if (!Number.isFinite(budget) || budget < 0) { setMsg("plan-msg", "\u26a0\ufe0f The budget must be an amount of 0 or more.", false); return; }
+  if (!Number.isFinite(actual) || actual < 0) { setMsg("plan-msg", "\u26a0\ufe0f The actual spend must be an amount of 0 or more.", false); return; }
   if (!status) { setMsg("plan-msg", "\u26a0\ufe0f Please choose a status.", false); return; }
 
   const { error } = await sb.rpc("save_plan_item", {
     p_id: id, p_name: name, p_description: $("#plan-description").value.trim(),
-    p_year: year, p_budget: Math.round(budget * 100) / 100,
+    p_year: year, p_budget: Math.round(budget * 100) / 100, p_actual: Math.round(actual * 100) / 100,
     p_group: $("#plan-group").value || null, p_status: status,
     p_projects: [...$$('#plan-form input[name="plan-project"]:checked')].map((i) => i.value),
   });

@@ -1,7 +1,8 @@
 -- ============================================================
 --  Blue Crane Vistas Portal — 10 Year Plan (trustee-only)
 --
---  Plan items: name, description, year, budget amount, optional communal
+--  Plan items: name, description, year, budget amount, actual spend
+--  amount, optional communal
 --  entity grouping, a status (managed list: name + description), and zero
 --  or more linked projects.
 --
@@ -33,10 +34,13 @@ create table if not exists plan_items (
   description text,
   year        int  not null check (year between 2000 and 2200),
   budget      numeric(12,2) not null default 0 check (budget >= 0),
+  actual_spend numeric(12,2) not null default 0 check (actual_spend >= 0),
   group_id    uuid references communal_area_groups(id) on delete set null,
   status_id   uuid not null references plan_statuses(id),
   created_at  timestamptz not null default now()
 );
+-- (for anyone who ran an earlier version of this script)
+alter table plan_items add column if not exists actual_spend numeric(12,2) not null default 0 check (actual_spend >= 0);
 create index if not exists idx_plan_items_year on plan_items(year);
 
 -- 3) Projects linked to a plan item (a project can serve more than one item,
@@ -63,6 +67,8 @@ create policy "trustees manage plan item projects" on plan_item_projects for all
   using ( is_trustee() ) with check ( is_trustee() );
 
 -- 5) Save a plan item and its projects in one go (all or nothing).
+--    (Removes the earlier version without the actual spend amount.)
+drop function if exists save_plan_item(uuid, text, text, int, numeric, uuid, uuid, uuid[]);
 --    Runs as the caller, so the trustee-only rules above still apply.
 create or replace function save_plan_item(
   p_id          uuid,
@@ -70,6 +76,7 @@ create or replace function save_plan_item(
   p_description text,
   p_year        int,
   p_budget      numeric,
+  p_actual      numeric,
   p_group       uuid,
   p_status      uuid,
   p_projects    uuid[]
@@ -85,13 +92,13 @@ begin
   end if;
 
   if pid is null then
-    insert into plan_items (name, description, year, budget, group_id, status_id)
-    values (trim(p_name), nullif(trim(p_description), ''), p_year, coalesce(p_budget, 0), p_group, p_status)
+    insert into plan_items (name, description, year, budget, actual_spend, group_id, status_id)
+    values (trim(p_name), nullif(trim(p_description), ''), p_year, coalesce(p_budget, 0), coalesce(p_actual, 0), p_group, p_status)
     returning id into pid;
   else
     update plan_items set
       name = trim(p_name), description = nullif(trim(p_description), ''),
-      year = p_year, budget = coalesce(p_budget, 0), group_id = p_group, status_id = p_status
+      year = p_year, budget = coalesce(p_budget, 0), actual_spend = coalesce(p_actual, 0), group_id = p_group, status_id = p_status
     where id = pid;
     if not found then raise exception 'That plan item no longer exists.'; end if;
   end if;
@@ -103,5 +110,5 @@ begin
 end;
 $$;
 
-revoke all on function save_plan_item(uuid, text, text, int, numeric, uuid, uuid, uuid[]) from public;
-grant execute on function save_plan_item(uuid, text, text, int, numeric, uuid, uuid, uuid[]) to authenticated;
+revoke all on function save_plan_item(uuid, text, text, int, numeric, numeric, uuid, uuid, uuid[]) from public;
+grant execute on function save_plan_item(uuid, text, text, int, numeric, numeric, uuid, uuid, uuid[]) to authenticated;

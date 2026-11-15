@@ -227,11 +227,11 @@ Ticket types, Users.
   screen or the ticket's Edit details; only trustees can change it (trigger
   `tickets_guard_project`). List filter: status.
 - **10 Year Plan** (Registry, trustee-only) — plan items (`plan_items`: name,
-  description, year, budget, optional grouping, status from `plan_statuses`, managed
+  description, year, budget, actual spend, optional grouping, status from `plan_statuses`, managed
   on **Plan statuses** under Admin) with zero or more projects (`plan_item_projects`,
   saved via RPC `save_plan_item`). Shown as a matrix: rows = groupings (A–Z, then
   "No grouping"), columns = 10 years starting this year (Earlier/Later to shift),
-  budget total per year. An item's year can be changed freely; the intended
+  budget total and actual spend total per year. An item's year can be changed freely; the intended
   practice (not enforced) is to mark an unachieved item Postponed and add a new
   item in a later year.
 - Communal entities list shows the type as "Grouping – Type"; the project form's
