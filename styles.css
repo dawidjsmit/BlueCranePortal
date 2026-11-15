@@ -605,3 +605,10 @@ tbody tr:hover { background: #f7f9fc; }
 #ticketdel-modal { z-index: 1100; }
 .plan-card-type { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--brand-dark); }
 .fb-open { margin-top: 8px; }
+
+/* Close button pinned to the top right of the ticket window */
+.modal-close-bar { position: sticky; top: -24px; height: 0; display: flex; justify-content: flex-end; z-index: 3; }
+.modal-close { transform: translate(10px, -14px); background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 10px; font-size: 13px; cursor: pointer; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.modal-close:hover { background: #f3f5f9; }
+#detail-content > h3:first-child { padding-right: 80px; }
