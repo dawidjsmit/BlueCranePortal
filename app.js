@@ -2095,6 +2095,7 @@ function renderPlan() {
     const s = state.planStatuses.find((x) => x.id === i.status_id);
     const n = planItemProjectIds(i.id).length;
     return `<button type="button" class="plan-card" data-edit-plan="${i.id}" title="${esc(i.description || i.name)}">
+      ${i.type_id && areaTypeName(i.type_id) !== "—" ? `<span class="plan-card-type">${esc(areaTypeName(i.type_id))}</span>` : ""}
       <span class="plan-card-name">${esc(i.name)}</span>
       <span class="plan-card-meta">Budget ${fmtMoney(i.budget)}${n ? ` · 🏗️ ${n}` : ""}</span>
       ${Number(i.actual_spend) ? `<span class="plan-card-meta">Spent ${fmtMoney(i.actual_spend)}</span>` : ""}
@@ -2153,6 +2154,7 @@ function openPlanModal(item, preset = {}) {
   const gid = item ? (item.group_id || "") : (preset.group || "");
   $("#plan-group").innerHTML = `<option value="">— no grouping —</option>` +
     state.areaGroups.map((g) => `<option value="${g.id}" ${gid === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("");
+  fillPlanTypes(item?.type_id || "");
   const firstStatus = state.planStatuses.find((s) => /^planned$/i.test(s.name));
   const sid = item?.status_id || firstStatus?.id || "";
   $("#plan-status").innerHTML = `<option value="">— choose —</option>` +
@@ -2164,6 +2166,25 @@ function openPlanModal(item, preset = {}) {
   $("#plan-msg").textContent = "";
   $("#plan-modal").classList.add("active");
 }
+
+// Type list for the plan item form. With a grouping chosen: that grouping's
+// types. With no grouping: every type, shown as "Grouping – Type".
+function fillPlanTypes(selectedId) {
+  const gid = $("#plan-group").value;
+  const types = typesByGrouping(state.areaTypes.filter((t) =>
+    (t.active || t.id === selectedId) && (!gid || t.group_id === gid)));
+  if (selectedId && !types.some((t) => t.id === selectedId)) selectedId = "";
+  $("#plan-type").innerHTML = `<option value="">— no type (whole grouping) —</option>` +
+    types.map((t) => `<option value="${t.id}" ${selectedId === t.id ? "selected" : ""}>${esc(gid ? t.name : areaTypeLabel(t))}</option>`).join("");
+}
+$("#plan-group").addEventListener("change", () => fillPlanTypes($("#plan-type").value));
+// Choosing a type sets the grouping to that type's grouping.
+$("#plan-type").addEventListener("change", () => {
+  const t = state.areaTypes.find((x) => x.id === $("#plan-type").value);
+  if (!t) return;
+  const g = t.group_id && areaGroupName(t.group_id) ? t.group_id : "";
+  if ($("#plan-group").value !== g) { $("#plan-group").value = g; fillPlanTypes(t.id); }
+});
 
 $("#plan-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2184,12 +2205,12 @@ $("#plan-form").addEventListener("submit", async (e) => {
   const { error } = await sb.rpc("save_plan_item", {
     p_id: id, p_name: name, p_description: $("#plan-description").value.trim(),
     p_year: year, p_budget: Math.round(budget * 100) / 100, p_actual: Math.round(actual * 100) / 100,
-    p_group: $("#plan-group").value || null, p_status: status,
+    p_group: $("#plan-group").value || null, p_type: $("#plan-type").value || null, p_status: status,
     p_projects: [...$$('#plan-form input[name="plan-project"]:checked')].map((i) => i.value),
   });
   if (error) {
     setMsg("plan-msg", /save_plan_item|plan_items/.test(error.message) && /not find|does not exist/.test(error.message)
-      ? "\u26a0\ufe0f Run supabase/30_ten_year_plan.sql first." : "\u26a0\ufe0f " + error.message, false);
+      ? "\u26a0\ufe0f Run supabase/30_ten_year_plan.sql and 31_plan_item_type.sql first." : "\u26a0\ufe0f " + error.message, false);
     return;
   }
   // Keep the moved/added item's year in view.
