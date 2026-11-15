@@ -64,6 +64,13 @@ then the history newest first. Posting as the holder marks the ticket Busy
 (RPC `mark_ticket_busy`) only from Sent or Waiting; Parked stays Parked. Trustees
 reopen a Parked / Complete / Cancelled ticket with ▶️ Mark Busy. "This ticket relates to" is picked with icon tiles.
 
+**Assigned user** (migration 37): optional `tickets.assigned_user_id` / `assigned_user_name`
+next to `assigned_role` (which still drives visibility and handling). Cleared
+whenever the role changes (trigger). Someone holding the role can assign it to
+themselves only (or unassign themselves); a trustee can assign anybody in the role
+(`ticket_role_users`) at any time. Only via RPC `assign_ticket_user`, which adds a
+👤 note to the history.
+
 **Ticket status changes (trustees):** Parked → Busy or Cancelled; Cancelled → Busy;
 Complete → Busy; otherwise → Complete, Cancelled or Parked.
 

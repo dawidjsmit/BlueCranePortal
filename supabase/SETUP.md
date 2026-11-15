@@ -156,6 +156,10 @@ in the SQL Editor the same way:
   each user's last visit and which line comments they've read (🆕 lines,
   "💬 new" comments, Dashboard box).
 
+- **`37_ticket_assigned_user.sql`** — optional "Assigned user" on tickets, next to
+  the assigned role. Cleared when the role changes; role holders can take it
+  themselves; trustees can assign anybody in the role.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons
