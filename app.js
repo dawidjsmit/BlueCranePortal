@@ -459,7 +459,7 @@ async function loadData() {
     sb.from("pets").select("*").order("name"),
     sb.from("unit_photos").select("*").order("created_at"),
     sb.from("unit_members").select("*"),
-    sb.from("ticket_types").select("*").order("sort_order"),
+    sb.from("ticket_types").select("*"),
     sb.from("ticket_photos").select("*").order("created_at"),
     sb.from("documents").select("*").eq("kind", "conduct_rules").order("created_at", { ascending: false }).limit(1),
     sb.from("communal_area_types").select("*"),
@@ -482,7 +482,9 @@ async function loadData() {
   state.pets = pets.data || [];
   state.unitPhotos = unitPhotos.data || [];
   state.members = members.data || [];
-  state.ticketTypes = ticketTypes.data || [];
+  // Ticket types are always shown A–Z by name.
+  state.ticketTypes = (ticketTypes.data || []).slice().sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
   state.ticketPhotos = ticketPhotos.data || [];
   state.conductDoc = (conductDocs.data && conductDocs.data[0]) || null;
   // Communal entity types are always shown A–Z by name.
@@ -1623,7 +1625,6 @@ function renderTicketTypes() {
   const rows = state.ticketTypes.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
     <td><strong>${esc(tt.name)}</strong></td>
     <td class="muted">${esc(tt.description || "—")}</td>
-    <td>${tt.sort_order}</td>
     <td>${tt.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Hidden</span>'}</td>
     <td style="text-align:right"><button class="btn ghost small" data-edit-type="${tt.id}">Edit</button></td>
   </tr>`).join("");
@@ -1633,8 +1634,8 @@ function renderTicketTypes() {
         <button class="btn primary small" id="add-type-btn">+ Add type</button></div>
       <p class="muted tiny">The list of types users choose from when logging a ticket.</p>
       <div class="table-wrap"><table><thead><tr>
-        <th>Name</th><th>Description</th><th>Order</th><th>Status</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No types yet.</td></tr>`}</tbody></table></div>
+        <th>Name</th><th>Description</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No types yet.</td></tr>`}</tbody></table></div>
     </div>`;
   $("#add-type-btn").addEventListener("click", () => openTypeModal(null));
 }
@@ -1644,7 +1645,6 @@ function openTypeModal(type) {
   $("#type-id").value = type?.id || "";
   $("#type-name").value = type?.name || "";
   $("#type-description").value = type?.description || "";
-  $("#type-order").value = type?.sort_order ?? state.ticketTypes.length + 1;
   $("#type-active").checked = type ? !!type.active : true;
   $("#type-msg").textContent = "";
   $("#type-modal").classList.add("active");
@@ -1656,7 +1656,6 @@ $("#type-form").addEventListener("submit", async (e) => {
   const payload = {
     name: $("#type-name").value.trim(),
     description: $("#type-description").value.trim() || null,
-    sort_order: parseInt($("#type-order").value, 10) || 0,
     active: $("#type-active").checked,
   };
   const { error } = id
