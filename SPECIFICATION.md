@@ -227,7 +227,8 @@ Ticket types, Users.
   screen or the ticket's Edit details; only trustees can change it (trigger
   `tickets_guard_project`). List filter: status.
 - **10 Year Plan** (Registry, trustee-only) — plan items (`plan_items`: name,
-  description, year, budget, actual spend, optional grouping, status from `plan_statuses`, managed
+  description, year, budget, actual spend, optional grouping, optional
+  communal entity type (`type_id`, must belong to the grouping; shown on the tile above the name), status from `plan_statuses`, managed
   on **Plan statuses** under Admin) with zero or more projects (`plan_item_projects`,
   saved via RPC `save_plan_item`). Shown as a matrix: rows = groupings (A–Z, then
   "No grouping"), columns = 10 years starting this year (Earlier/Later to shift),

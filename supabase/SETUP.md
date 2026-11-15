@@ -133,6 +133,9 @@ in the SQL Editor the same way:
   plan items (name, description, year, budget, optional grouping, status) and
   their linked projects. Starter statuses are added once.
 
+- **`31_plan_item_type.sql`** — an optional communal entity type on each
+  10 Year Plan item (must match the item's grouping).
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons
