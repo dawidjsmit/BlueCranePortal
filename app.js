@@ -73,7 +73,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], areaGroups: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], areaGroups: [], projects: [], projectStatuses: [], projectUnits: [], projectAreas: [], projectProviders: [] };
 let recovering = false; // true while handling a password-reset link
 let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
@@ -396,6 +396,7 @@ function navGroups() {
         { id: "reg-trustees", label: "Trustees", ico: "🧑‍💼" },
         { id: "reg-gardeners", label: "Gardeners", ico: "🧑‍🌾" },
         { id: "reg-providers", label: "Service providers", ico: "🔧" },
+        { id: "projects", label: "Projects", ico: "🏗️" },
       ],
     });
     groups.push({
@@ -404,6 +405,7 @@ function navGroups() {
         { id: "layouts", label: "Layouts", ico: "📐" },
         { id: "areagroups", label: "Communal entity groupings", ico: "🗂️" },
         { id: "areatypes", label: "Communal entity types", ico: "🏷️" },
+        { id: "projectstatuses", label: "Project statuses", ico: "📌" },
         { id: "ticketstatuses", label: "Ticket statuses", ico: "🚦" },
         { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
         { id: "aiengagement", label: "AI engagement", ico: "✨" },
@@ -449,7 +451,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups, projects, projectStatuses, projectUnits, projectAreas, projectProviders] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -473,6 +475,12 @@ async function loadData() {
     sb.from("ticket_status_info").select("*"),
     isTrustee() ? sb.from("user_last_login").select("*") : Promise.resolve({ data: [] }),
     sb.from("communal_area_groups").select("*"),
+    // Projects (trustee-only; empty until migration 29 is run).
+    isTrustee() ? sb.from("projects").select("*") : Promise.resolve({ data: [] }),
+    isTrustee() ? sb.from("project_statuses").select("*") : Promise.resolve({ data: [] }),
+    isTrustee() ? sb.from("project_units").select("*") : Promise.resolve({ data: [] }),
+    isTrustee() ? sb.from("project_areas").select("*") : Promise.resolve({ data: [] }),
+    isTrustee() ? sb.from("project_providers").select("*") : Promise.resolve({ data: [] }),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -496,6 +504,13 @@ async function loadData() {
   state.areaGroups = (areaGroups.data || []).slice().sort((a, b) =>
     String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
   state.areas = areas.data || [];
+  state.projects = (projects.data || []).slice().sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
+  state.projectStatuses = (projectStatuses.data || []).slice().sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
+  state.projectUnits = projectUnits.data || [];
+  state.projectAreas = projectAreas.data || [];
+  state.projectProviders = projectProviders.data || [];
   state.areaPhotos = areaPhotos.data || [];
   state.registry = {
     trustees: regTrustees.data || [],
@@ -604,6 +619,9 @@ function showView(name) {
     "reg-providers": () => renderRegistry("providers"),
     aiengagement: renderAiEngagement,
     users: renderPeople,
+    projects: renderProjects,
+    projectdetail: renderProjectDetail,
+    projectstatuses: renderProjectStatuses,
     activity: renderActivity,
   }[name];
   if (render) render();
@@ -1674,6 +1692,295 @@ $("#type-form").addEventListener("submit", async (e) => {
   closeOverlays();
   await loadData();
   refreshActiveView();
+});
+
+/* ---------- Project statuses (trustee) — maintained like ticket types ---------- */
+function projectStatusName(id) {
+  return state.projectStatuses.find((s) => s.id === id)?.name || "—";
+}
+
+function renderProjectStatuses() {
+  const rows = state.projectStatuses.map((s) => {
+    const n = state.projects.filter((p) => p.status_id === s.id).length;
+    return `<tr class="${s.active ? "" : "inactive-row"}">
+    <td><strong>${esc(s.name)}</strong></td>
+    <td class="muted">${esc(s.description || "—")}</td>
+    <td>${n} project${n === 1 ? "" : "s"}</td>
+    <td>${s.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Hidden</span>'}</td>
+    <td style="text-align:right"><button class="btn ghost small" data-edit-projstatus="${s.id}">Edit</button></td>
+  </tr>`;
+  }).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>📌 Project statuses</h2>
+        <button class="btn primary small" id="add-projstatus-btn">+ Add status</button></div>
+      <p class="muted tiny">The statuses a project can have. Hidden statuses can't be chosen for new changes, but projects that already have them keep them.</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Name</th><th>Description</th><th>Used by</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No statuses yet. Run supabase/29_projects.sql first.</td></tr>`}</tbody></table></div>
+    </div>`;
+  $("#add-projstatus-btn").addEventListener("click", () => openProjectStatusModal(null));
+}
+
+function openProjectStatusModal(s) {
+  $("#projstatus-modal-title").textContent = s ? "Edit project status" : "Add project status";
+  $("#projstatus-id").value = s?.id || "";
+  $("#projstatus-name").value = s?.name || "";
+  $("#projstatus-description").value = s?.description || "";
+  $("#projstatus-active").checked = s ? !!s.active : true;
+  $("#projstatus-msg").textContent = "";
+  $("#projstatus-modal").classList.add("active");
+}
+
+$("#projstatus-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#projstatus-id").value;
+  const payload = {
+    name: $("#projstatus-name").value.trim(),
+    description: $("#projstatus-description").value.trim() || null,
+    active: $("#projstatus-active").checked,
+  };
+  if (!payload.name) { setMsg("projstatus-msg", "\u26a0\ufe0f Please enter a name.", false); return; }
+  const { error } = id
+    ? await sb.from("project_statuses").update(payload).eq("id", id)
+    : await sb.from("project_statuses").insert(payload);
+  if (error) {
+    setMsg("projstatus-msg", error.message.includes("duplicate") ? "That status name already exists."
+      : /project_statuses/.test(error.message) ? "\u26a0\ufe0f Run supabase/29_projects.sql first."
+      : "\u26a0\ufe0f " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
+/* ---------- Projects (trustee-only registry) ---------- */
+let projectStatusFilter = "";   // "" = all, else a status id
+let currentProjectId = null;
+
+const projUnitIds = (pid) => state.projectUnits.filter((x) => x.project_id === pid).map((x) => x.unit_id);
+const projAreaIds = (pid) => state.projectAreas.filter((x) => x.project_id === pid).map((x) => x.area_id);
+const projProviderIds = (pid) => state.projectProviders.filter((x) => x.project_id === pid).map((x) => x.provider_id);
+const projTickets = (pid) => state.tickets.filter((t) => t.project_id === pid);
+
+function projectName(id) {
+  return state.projects.find((p) => p.id === id)?.name || "";
+}
+function trusteeName(id) {
+  const t = state.registry.trustees.find((x) => x.id === id);
+  return t ? fullName(t) : "";
+}
+function areaLabel(a) {
+  return `${a.code} — ${a.name}`;
+}
+function projectStatusPill(p) {
+  const s = state.projectStatuses.find((x) => x.id === p.status_id);
+  return `<span class="pill proj-status"${s?.description ? ` title="${esc(s.description)}"` : ""}>${esc(s ? s.name : "—")}</span>`;
+}
+
+function renderProjects() {
+  const all = state.projects;
+  const count = (id) => all.filter((p) => p.status_id === id).length;
+  const opts = [{ value: "", label: `All statuses (${all.length})` }]
+    .concat(state.projectStatuses.filter((s) => s.active || count(s.id) > 0)
+      .map((s) => ({ value: s.id, label: `${s.name} (${count(s.id)})` })));
+  if (!opts.some((o) => o.value === projectStatusFilter)) projectStatusFilter = "";
+  const f = projectStatusFilter;
+  const shown = all.filter((p) => !f || p.status_id === f);
+
+  const rows = shown.map((p) => {
+    const n = projTickets(p.id).length;
+    return `<tr>
+      <td><strong>${esc(p.name)}</strong></td>
+      <td>${projectStatusPill(p)}</td>
+      <td>${esc(trusteeName(p.run_by_trustee_id) || "—")}</td>
+      <td style="white-space:nowrap">${fmtDay(p.start_date)}</td>
+      <td style="white-space:nowrap">${p.due_date ? fmtDay(p.due_date) : "—"}</td>
+      <td style="white-space:nowrap">${p.finish_date ? fmtDay(p.finish_date) : "—"}</td>
+      <td>${n}</td>
+      <td style="text-align:right"><button class="btn ghost small" data-open-project="${p.id}">Open</button></td>
+    </tr>`;
+  }).join("");
+
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🏗️ Projects</h2>
+        <button class="btn primary small" id="add-project-btn">+ Add project</button></div>
+      <p class="muted tiny">Projects for the complex. Each can be linked to units, communal entities, service providers and tickets. Visible to trustees only.</p>
+      <div class="filters">
+        <label>Status
+          <select id="project-status-filter">
+            ${opts.map((o) => `<option value="${o.value}" ${o.value === f ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+          </select>
+        </label>
+        ${f ? `<span class="muted tiny">Showing ${shown.length} of ${all.length}</span>` : ""}
+      </div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Name</th><th>Status</th><th>Run by</th><th>Start</th><th>Due</th><th>Finished</th><th>Tickets</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">${all.length ? "No projects with this status." : "No projects yet."}</td></tr>`}</tbody></table></div>
+    </div>`;
+  $("#add-project-btn").addEventListener("click", () => openProjectModal(null));
+  $("#project-status-filter").addEventListener("change", (e) => {
+    projectStatusFilter = e.target.value;
+    renderProjects();
+  });
+}
+
+function renderProjectDetail(projectId) {
+  currentProjectId = projectId || currentProjectId;
+  const p = state.projects.find((x) => x.id === currentProjectId);
+  if (!p) return renderProjects();
+  const status = state.projectStatuses.find((s) => s.id === p.status_id);
+
+  const units = projUnitIds(p.id).map((id) => state.units.find((u) => u.id === id)).filter(Boolean)
+    .sort(unitCompare);
+  const areas = projAreaIds(p.id).map((id) => state.areas.find((a) => a.id === id)).filter(Boolean)
+    .sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+  const providers = projProviderIds(p.id).map((id) => state.registry.providers.find((r) => r.id === id))
+    .filter(Boolean).sort((a, b) => providerName(a).localeCompare(providerName(b)));
+  const tickets = projTickets(p.id);
+  const linkable = state.tickets.filter((t) => !t.project_id && t.status !== "create");
+
+  $("#main").innerHTML = `
+    <button class="link-btn" data-back-view="projects">← Back to projects</button>
+    <div class="panel">
+      <div class="panel-head"><h2>🏗️ ${esc(p.name)}</h2>
+        <button class="btn ghost small" data-edit-project="${p.id}">Edit</button></div>
+      ${projectStatusPill(p)}
+      ${status?.description ? `<p class="status-hint">ℹ️ ${esc(status.description)}</p>` : ""}
+      <dl class="detail-grid">
+        <dt>Created</dt><dd>${fmtDay(p.created_at)}</dd>
+        <dt>Start date</dt><dd>${fmtDay(p.start_date)}</dd>
+        <dt>Due date</dt><dd>${p.due_date ? fmtDay(p.due_date) : "—"}</dd>
+        <dt>Finish date</dt><dd>${p.finish_date ? fmtDay(p.finish_date) : "—"}</dd>
+        <dt>Run by</dt><dd>${esc(trusteeName(p.run_by_trustee_id) || "—")}</dd>
+        <dt>Description</dt><dd>${esc(p.description || "—")}</dd>
+      </dl>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>🏢 Units (${units.length})</h2></div>
+      ${units.length ? `<div class="linked-row">${units.map((u) => unitLinkChip(u.id)).join(" ")}</div>`
+        : `<div class="empty">No units. Use Edit to add some.</div>`}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>🧩 Communal entities (${areas.length})</h2></div>
+      ${areas.length ? `<div class="linked-row">${areas.map((a) =>
+          `<button class="chip chip-btn" data-open-area="${a.id}" title="${esc(areaTypeName(a.type_id))}">${esc(areaLabel(a))}</button>`).join(" ")}</div>`
+        : `<div class="empty">No communal entities. Use Edit to add some.</div>`}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>🔧 Service providers (${providers.length})</h2></div>
+      ${providers.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Contact person</th><th>Phone</th><th>Email</th></tr></thead><tbody>
+          ${providers.map((r) => `<tr class="${regIsCurrent(r) ? "" : "inactive-row"}">
+            <td><strong>${esc(providerName(r))}</strong></td><td>${esc(r.contact_person || "—")}</td>
+            <td>${telLink(r.phone)}</td><td>${mailLink(r.email)}</td></tr>`).join("")}
+        </tbody></table></div>`
+        : `<div class="empty">No service providers. Use Edit to add some.</div>`}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>🎟️ Tickets (${tickets.length})</h2></div>
+      <div class="filters">
+        <label>Link a ticket
+          <select id="project-link-ticket">
+            <option value="">— choose a ticket not in a project —</option>
+            ${linkable.map((t) => `<option value="${t.id}">${esc(t.heading)} · ${esc(ticketTargetLabel(t))} · ${esc(TICKET_STATUS_LABEL[t.status] || t.status)}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <p id="project-ticket-msg" class="login-msg"></p>
+      ${tickets.length ? `<div class="request-list">${tickets.map((t) => `
+        <div class="project-ticket">${ticketCard(t)}
+          <button class="icon-btn" data-unlink-project-ticket="${t.id}" title="Remove this ticket from the project" aria-label="Remove this ticket from the project">✕</button>
+        </div>`).join("")}</div>`
+        : `<div class="empty">No tickets in this project yet.</div>`}
+    </div>`;
+
+  $("#project-link-ticket").addEventListener("change", (e) => {
+    if (e.target.value) setTicketProject(e.target.value, p.id);
+  });
+}
+
+async function setTicketProject(ticketId, projectId) {
+  const { error } = await sb.from("tickets").update({ project_id: projectId }).eq("id", ticketId);
+  if (error) { setMsg("project-ticket-msg", "\u26a0\ufe0f " + error.message, false); return; }
+  await loadData();
+  renderProjectDetail(currentProjectId);
+}
+
+// Checkbox list for the project form.
+function checklistHtml(name, items, selected) {
+  if (!items.length) return `<p class="muted tiny">None available.</p>`;
+  return items.map((it) => `<label class="check"><input type="checkbox" name="${name}" value="${it.value}" ${selected.includes(it.value) ? "checked" : ""} /> ${esc(it.label)}</label>`).join("");
+}
+const checkedValues = (name) => [...$$(`#project-form input[name="${name}"]:checked`)].map((i) => i.value);
+
+function openProjectModal(p) {
+  $("#project-modal-title").textContent = p ? "Edit project" : "Add project";
+  $("#project-id").value = p?.id || "";
+  $("#project-name").value = p?.name || "";
+  $("#project-description").value = p?.description || "";
+  $("#project-created").value = p ? fmtDay(p.created_at) : "(set when saved)";
+
+  const statuses = state.projectStatuses.filter((s) => s.active || s.id === p?.status_id);
+  $("#project-status").innerHTML = `<option value="">— choose —</option>` +
+    statuses.map((s) => `<option value="${s.id}" ${p?.status_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+
+  $("#project-start").value = p?.start_date || isoDay(new Date());
+  $("#project-due").value = p?.due_date || "";
+  $("#project-finish").value = p?.finish_date || "";
+
+  const trustees = state.registry.trustees.filter((t) => regIsCurrent(t) || t.id === p?.run_by_trustee_id)
+    .sort((a, b) => fullName(a).localeCompare(fullName(b)));
+  $("#project-trustee").innerHTML = `<option value="">— none —</option>` +
+    trustees.map((t) => `<option value="${t.id}" ${p?.run_by_trustee_id === t.id ? "selected" : ""}>${esc(fullName(t))}</option>`).join("");
+
+  const selUnits = p ? projUnitIds(p.id) : [];
+  const selAreas = p ? projAreaIds(p.id) : [];
+  const selProviders = p ? projProviderIds(p.id) : [];
+  $("#project-units").innerHTML = checklistHtml("proj-unit",
+    state.units.map((u) => ({ value: u.id, label: String(u.number) })), selUnits);
+  $("#project-areas").innerHTML = checklistHtml("proj-area",
+    state.areas.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }))
+      .map((a) => ({ value: a.id, label: areaLabel(a) })), selAreas);
+  $("#project-providers").innerHTML = checklistHtml("proj-provider",
+    state.registry.providers.filter((r) => regIsCurrent(r) || selProviders.includes(r.id))
+      .sort((a, b) => providerName(a).localeCompare(providerName(b)))
+      .map((r) => ({ value: r.id, label: providerName(r) + (regIsCurrent(r) ? "" : " (former)") })), selProviders);
+
+  $("#project-msg").textContent = "";
+  $("#project-modal").classList.add("active");
+}
+
+$("#project-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#project-id").value || null;
+  const name = $("#project-name").value.trim();
+  const status = $("#project-status").value;
+  const start = $("#project-start").value;
+  const due = $("#project-due").value || null;
+  const finish = $("#project-finish").value || null;
+  if (!name) { setMsg("project-msg", "\u26a0\ufe0f Please enter the project name.", false); return; }
+  if (!status) { setMsg("project-msg", "\u26a0\ufe0f Please choose a status.", false); return; }
+  if (!start) { setMsg("project-msg", "\u26a0\ufe0f Please enter the start date.", false); return; }
+  if (due && due < start) { setMsg("project-msg", "\u26a0\ufe0f The due date can't be before the start date.", false); return; }
+  if (finish && finish < start) { setMsg("project-msg", "\u26a0\ufe0f The finish date can't be before the start date.", false); return; }
+
+  const { data, error } = await sb.rpc("save_project", {
+    p_id: id, p_name: name, p_description: $("#project-description").value.trim(),
+    p_status: status, p_start: start, p_due: due, p_finish: finish,
+    p_trustee: $("#project-trustee").value || null,
+    p_units: checkedValues("proj-unit"), p_areas: checkedValues("proj-area"),
+    p_providers: checkedValues("proj-provider"),
+  });
+  if (error) {
+    setMsg("project-msg", /save_project|projects/.test(error.message) && /not find|does not exist/.test(error.message)
+      ? "\u26a0\ufe0f Run supabase/29_projects.sql first." : "\u26a0\ufe0f " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  renderProjectDetail(data || id);
 });
 
 /* ---------- Trustee-only registries: Trustees, Gardeners, Service providers ---------- */
@@ -2905,6 +3212,7 @@ async function openTicket(id) {
       <dt>Logged by</dt><dd>${esc(loggerName(t))}${t.logged_by_role ? " (" + (ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""}</dd>
       <dt>Logged</dt><dd>${fmtDate(t.created_at)}</dd>
       <dt>Assigned to</dt><dd>${t.assigned_role ? (ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</dd>
+      ${isTrustee() && t.project_id ? `<dt>Project</dt><dd>${esc(projectName(t.project_id) || "—")}</dd>` : ""}
     </dl>
     <p>${esc(t.description) || "<em>No description.</em>"}</p>
 
@@ -3164,6 +3472,13 @@ function openTicketModal(ticket) {
   }
   populateTicketAreas(ticket?.communal_area_id || "");
 
+  // Project (trustees only, optional).
+  $("#ticket-project-wrap").hidden = !isTrustee();
+  if (isTrustee()) {
+    $("#ticket-project").innerHTML = `<option value="">— none —</option>` +
+      state.projects.map((p) => `<option value="${p.id}" ${ticket?.project_id === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  }
+
   $("#ticket-heading").value = ticket?.heading || "";
   $("#ticket-description").value = ticket?.description || "";
   $("#ticket-msg").textContent = "";
@@ -3201,6 +3516,7 @@ $("#ticket-form").addEventListener("submit", async (e) => {
     heading: $("#ticket-heading").value.trim(),
     description: $("#ticket-description").value.trim(),
   };
+  if (isTrustee()) payload.project_id = $("#ticket-project").value || null;
   let savedId = id;
   if (id) {
     const { error } = await sb.from("tickets").update(payload).eq("id", id);
@@ -3301,6 +3617,11 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editAreatype) openAreaTypeModal(state.areaTypes.find((x) => x.id === t.dataset.editAreatype));
   if (t.dataset.editArea) openAreaModal(state.areas.find((x) => x.id === t.dataset.editArea));
   if (t.dataset.openArea) renderAreaDetail(t.dataset.openArea);
+  // Projects
+  if (t.dataset.editProjstatus) openProjectStatusModal(state.projectStatuses.find((x) => x.id === t.dataset.editProjstatus));
+  if (t.dataset.openProject) renderProjectDetail(t.dataset.openProject);
+  if (t.dataset.editProject) openProjectModal(state.projects.find((x) => x.id === t.dataset.editProject));
+  if (t.dataset.unlinkProjectTicket) setTicketProject(t.dataset.unlinkProjectTicket, null);
   if (t.dataset.delAreaPhoto) deleteAreaPhoto(t.dataset.delAreaPhoto);
 
   // Trustee registries (Trustees / Gardeners / Service providers)
