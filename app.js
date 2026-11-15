@@ -3422,7 +3422,7 @@ function ticketTargetLabel(t) {
     const a = state.areas.find((x) => x.id === t.communal_area_id);
     return a ? (a.name) : "Communal entity";
   }
-  return "—";
+  return "General";
 }
 function ticketCard(t) {
   const assigned = t.assigned_role ? `· to <strong>${ROLE_LABEL[t.assigned_role] || t.assigned_role}</strong>` : "";
@@ -3464,7 +3464,7 @@ async function openTicket(id) {
     <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span>
     ${statusDesc(t.status) ? `<p class="status-hint">ℹ️ ${esc(statusDesc(t.status))}</p>` : ""}
     <dl class="detail-grid">
-      <dt>${t.communal_area_id ? "Communal entity" : "Unit"}</dt><dd>${esc(ticketTargetLabel(t))}</dd>
+      <dt>${t.communal_area_id ? "Communal entity" : t.unit_id ? "Unit" : "Relates to"}</dt><dd>${esc(ticketTargetLabel(t))}</dd>
       <dt>Logged by</dt><dd>${esc(loggerName(t))}${t.logged_by_role ? " (" + (ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""}</dd>
       <dt>Logged</dt><dd>${fmtDate(t.created_at)}</dd>
       <dt>Assigned to</dt><dd>${t.assigned_role ? (ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</dd>
@@ -3727,6 +3727,7 @@ document.addEventListener("submit", async (e) => {
 
 /* ---------- Ticket create / edit ---------- */
 function openTicketModal(ticket) {
+  closeOverlays(); // e.g. the ticket window when clicking its Edit button
   $("#ticket-modal-title").textContent = ticket ? "Edit ticket" : "Log a ticket";
   $("#ticket-id").value = ticket?.id || "";
 
@@ -3737,13 +3738,17 @@ function openTicketModal(ticket) {
   $("#ticket-type").innerHTML = state.ticketTypes.filter((tt) => tt.active || tt.id === ticket?.type_id)
     .map((tt) => `<option value="${tt.id}" ${ticket?.type_id === tt.id ? "selected" : ""}>${esc(tt.name)}</option>`).join("");
 
-  // Unit dropdown: ALL units for every role (optional). Default to the
-  // resident's own unit when creating a new ticket (not for gardeners/SPs,
-  // whose "units" come from assigned tickets and aren't a sensible default).
+  // What it relates to: a unit, a communal entity, or neither. New tickets
+  // start with nothing chosen, so the user has to pick.
+  $("#ticket-relates").value = !ticket ? ""
+    : ticket.unit_id ? "unit" : ticket.communal_area_id ? "area" : "none";
+
+  // Unit dropdown: ALL units for every role. Residents get their own unit
+  // pre-selected (not gardeners/SPs, for whom it isn't a sensible default).
   const myUnits = isResident() ? [...myUnitIds()] : [];
   const defaultUnit = ticket ? ticket.unit_id : (myUnits.length ? myUnits[0] : "");
-  $("#ticket-unit").innerHTML = `<option value="">— none —</option>` +
-    state.units.map((u) => `<option value="${u.id}" ${defaultUnit === u.id ? "selected" : ""}>${esc(u.number)}</option>`).join("");
+  $("#ticket-unit").innerHTML = `<option value="">— choose the unit —</option>` +
+    state.units.map((u) => `<option value="${u.id}" ${defaultUnit === u.id ? "selected" : ""}>${esc(unitChoiceLabel(u))}</option>`).join("");
 
   // Communal entity type (filters the entity list) + entity (both optional).
   $("#ticket-areatype").innerHTML = `<option value="">— type —</option>` +
@@ -3754,6 +3759,7 @@ function openTicketModal(ticket) {
     if (a?.type_id) $("#ticket-areatype").value = a.type_id;
   }
   populateTicketAreas(ticket?.communal_area_id || "");
+  showTicketRelates();
 
   // Project (trustees only, optional).
   $("#ticket-project-wrap").hidden = !isTrustee();
@@ -3768,6 +3774,18 @@ function openTicketModal(ticket) {
   $("#ticket-modal").classList.add("active");
 }
 
+// "Unit 01", "Unit 02", … for the unit dropdown.
+function unitChoiceLabel(u) {
+  const n = parseInt(u.number, 10);
+  return "Unit " + (Number.isFinite(n) ? String(n).padStart(2, "0") : u.number);
+}
+// Show only the part of the form that matches "This ticket relates to".
+function showTicketRelates() {
+  const r = $("#ticket-relates").value;
+  $("#ticket-unit-wrap").hidden = r !== "unit";
+  $("#ticket-area-wrap").hidden = r !== "area";
+}
+
 // Fill the communal-entity dropdown based on the chosen type.
 function populateTicketAreas(selectedId) {
   const typeId = $("#ticket-areatype").value;
@@ -3779,16 +3797,21 @@ function populateTicketAreas(selectedId) {
 $("#ticket-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = $("#ticket-id").value;
-  const unitId = $("#ticket-unit").value || null;
-  const areaId = $("#ticket-area").value || null;
+  const relates = $("#ticket-relates").value;
+  // Only the chosen kind is saved, so a ticket never has both.
+  const unitId = relates === "unit" ? ($("#ticket-unit").value || null) : null;
+  const areaId = relates === "area" ? ($("#ticket-area").value || null) : null;
 
-  // Enforce: exactly one of Unit / Communal entity.
-  if (unitId && areaId) {
-    setMsg("ticket-msg", "⚠️ Choose either a Unit or a Communal entity — not both.", false);
+  if (!relates) {
+    setMsg("ticket-msg", "\u26a0\ufe0f Please choose what this ticket relates to.", false);
     return;
   }
-  if (!unitId && !areaId) {
-    setMsg("ticket-msg", "⚠️ Please choose either a Unit or a Communal entity.", false);
+  if (relates === "unit" && !unitId) {
+    setMsg("ticket-msg", "\u26a0\ufe0f Please choose the unit.", false);
+    return;
+  }
+  if (relates === "area" && !areaId) {
+    setMsg("ticket-msg", "\u26a0\ufe0f Please choose the communal entity.", false);
     return;
   }
 
@@ -3954,13 +3977,7 @@ document.addEventListener("change", (e) => {
   if (e.target.id === "occupant-active") toggleLeftOn("occupant");
   if (e.target.id === "pet-type") togglePetOther();
   if (e.target.id === "ticket-areatype") populateTicketAreas("");
-  // Picking a Unit clears any communal-area selection, and vice versa.
-  if (e.target.id === "ticket-unit" && e.target.value) {
-    $("#ticket-areatype").value = ""; populateTicketAreas("");
-  }
-  if (e.target.id === "ticket-area" && e.target.value) {
-    $("#ticket-unit").value = "";
-  }
+  if (e.target.id === "ticket-relates") showTicketRelates();
 });
 $$(".modal-overlay").forEach((ov) =>
   ov.addEventListener("click", (e) => { if (e.target === ov) ov.classList.remove("active"); }));
