@@ -440,11 +440,18 @@ tbody tr:hover { background: #f7f9fc; }
 .fb-history-title { margin: 14px 0 0; font-size: 13px; }
 #feedback-thread .fb-item { background: #f9fafb; }
 
-/* Reassign */
-.reassign-box { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fbfcfe; }
-.reassign-box h4 { margin: 0 0 2px; }
-.reassign-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
-.reassign-row select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+/* Reassign (one line) */
+.reassign-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 14px; font-size: 14px; }
+.reassign-line select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.reassign-go { border: 0; background: var(--brand); color: #fff; border-radius: 6px; width: 26px; height: 26px;
+  cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
+.reassign-go:hover { background: var(--brand-dark); }
+.reassign-go:disabled { opacity: .5; cursor: default; }
+#reassign-msg:empty { display: none; }
+/* Icon actions in the ticket window (edit, complete, cancel, park) */
+.ticket-act { font-size: 18px; }
+.ticket-send { background: #e8f0fe; }
+.ticket-send:hover { background: #d2e3fc; }
 
 /* "This ticket relates to" tiles */
 .relates-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }

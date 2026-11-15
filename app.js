@@ -3452,10 +3452,14 @@ async function openTicket(id) {
   const loggerCanEdit = isLogger && isDraft;
   const canEditDetails = isTrustee() || loggerCanEdit;
 
-  // Trustee-only status transitions for Complete/Cancelled/Parked.
+  // Trustee-only status transitions for Complete/Cancelled/Parked (icons).
+  const STATUS_ICON = { complete: "✅", cancelled: "❌", parked: "⏸️" };
   const trusteeStatusBtns = isTrustee() && !isDraft
     ? ["complete", "cancelled", "parked"].filter((s) => s !== t.status)
-        .map((s) => `<button class="btn small ghost" data-ticket-status="${t.id}|${s}"${statusDesc(s) ? ` title="${esc(statusDesc(s))}"` : ""}>Mark ${TICKET_STATUS_LABEL[s]}</button>`).join(" ")
+        .map((s) => {
+          const tip = `Mark ${TICKET_STATUS_LABEL[s]}` + (statusDesc(s) ? ` — ${statusDesc(s)}` : "");
+          return `<button class="icon-btn ticket-act" data-ticket-status="${t.id}|${s}" title="${esc(tip)}" aria-label="${esc(tip)}">${STATUS_ICON[s]}</button>`;
+        }).join("")
     : "";
 
   $("#detail-content").innerHTML = `
@@ -3480,11 +3484,11 @@ async function openTicket(id) {
 
     <div class="detail-actions">
       ${loggerCanEdit ? `
-        <label class="btn ghost small upload-label">+ Photo<input type="file" accept="image/*" id="ticket-photo-input" hidden /></label>
-        <button class="btn ghost small" data-edit-ticket="${t.id}">Edit</button>
-        <button class="btn primary small" data-submit-ticket="${t.id}">Submit &amp; send</button>
-        <button class="btn ghost small" data-delete-ticket="${t.id}" style="color:var(--open)">Delete</button>` : ""}
-      ${isTrustee() && !isDraft ? `<button class="btn ghost small" data-edit-ticket="${t.id}">Edit details</button>` : ""}
+        <label class="icon-btn ticket-act upload-label" title="Add a photo" aria-label="Add a photo">📷<input type="file" accept="image/*" id="ticket-photo-input" hidden /></label>
+        <button class="icon-btn ticket-act" data-edit-ticket="${t.id}" title="Edit" aria-label="Edit">✏️</button>
+        <button class="icon-btn ticket-act ticket-send" data-submit-ticket="${t.id}" title="Submit &amp; send" aria-label="Submit &amp; send">📤</button>
+        <button class="icon-btn ticket-act" data-delete-ticket="${t.id}" title="Delete" aria-label="Delete">🗑️</button>` : ""}
+      ${isTrustee() && !isDraft ? `<button class="icon-btn ticket-act" data-edit-ticket="${t.id}" title="Edit details" aria-label="Edit details">✏️</button>` : ""}
       ${trusteeStatusBtns}
     </div>
     <p id="ticket-photo-msg" class="login-msg"></p>
@@ -3523,15 +3527,13 @@ function reassignPanel(t, isDraft) {
   const opts = ROUTE_ROLES.filter((r) => r !== t.assigned_role)
     .map((r) => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join("");
   return `
-    <div class="reassign-box">
-      <h4>Reassign</h4>
-      <p class="muted tiny">Currently assigned to <strong>${esc(ROLE_LABEL[t.assigned_role] || "—")}</strong>.</p>
-      <div class="reassign-row">
-        <select id="reassign-role">${opts}</select>
-        <button type="button" class="btn primary small" id="reassign-btn" data-reassign-ticket="${t.id}">Reassign</button>
-      </div>
-      <p id="reassign-msg" class="login-msg"></p>
-    </div>`;
+    <div class="reassign-line">
+      <strong>Reassign:</strong>
+      <span>from <strong>${esc(ROLE_LABEL[t.assigned_role] || "—")}</strong> to</span>
+      <select id="reassign-role" aria-label="Reassign to">${opts}</select>
+      <button type="button" class="reassign-go" id="reassign-btn" data-reassign-ticket="${t.id}" title="Reassign now" aria-label="Reassign now">→</button>
+    </div>
+    <p id="reassign-msg" class="login-msg"></p>`;
 }
 
 function feedbackComposer(t, isDraft) {
