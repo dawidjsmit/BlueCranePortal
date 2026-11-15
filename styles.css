@@ -514,3 +514,9 @@ tbody tr:hover { background: #f7f9fc; }
 /* ===== Ticket status hints ===== */
 .status-hint { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 .pill[title] { cursor: help; }
+
+/* Destructive actions (deactivate a user) */
+.btn.danger { background: #dc2626; color: #fff; }
+.btn.danger:hover { background: #b91c1c; }
+.btn-danger-text { background: transparent; color: #dc2626; }
+.btn-danger-text:hover { background: #fee2e2; }

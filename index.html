@@ -121,6 +121,17 @@
     </div>
   </section>
 
+  <!-- Deactivated-account view -->
+  <section id="view-deactivated" class="auth-wrap" hidden>
+    <div class="auth-card">
+      <span class="logo big">🚫</span>
+      <h2>Account deactivated</h2>
+      <p class="muted">This account has been deactivated and can no longer use the Blue Crane Vistas Portal.</p>
+      <p class="muted">If you think this is a mistake, please contact a trustee.</p>
+      <button class="btn ghost" id="deactivated-signout">Sign out</button>
+    </div>
+  </section>
+
   <!-- Ticket create/edit modal -->
   <div class="modal-overlay" id="ticket-modal">
     <div class="modal">
@@ -449,6 +460,44 @@
           <button type="submit" class="btn primary">Save pet</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Add a user (trustee) -->
+  <div class="modal-overlay" id="adduser-modal">
+    <div class="modal">
+      <h3>Add a user</h3>
+      <p class="muted tiny" style="margin-top:-6px">Creates a login and links it to the person's registry record. Add the person to the right registry first.</p>
+      <form id="adduser-form" novalidate>
+        <label>Role <select id="adduser-role"></select></label>
+        <label>Registry record <select id="adduser-record"></select></label>
+        <div id="adduser-none" class="userlink-none" hidden>
+          <span id="adduser-none-text"></span>
+          <button type="button" class="link-btn" id="adduser-goto" data-view="">Go to that registry →</button>
+        </div>
+        <label>Full name <input id="adduser-name" autocomplete="off" /></label>
+        <label>Email (used to sign in) <input id="adduser-email" type="email" autocomplete="off" /></label>
+        <label>Password (at least 6 characters) <input id="adduser-password" type="text" autocomplete="new-password" /></label>
+        <p class="muted tiny">The user is approved straight away and signs in on the Password tab. They can change the password later.</p>
+        <p id="adduser-msg" class="login-msg"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close>Cancel</button>
+          <button type="submit" class="btn primary" id="adduser-save">Create user</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Deactivate / reactivate confirmation -->
+  <div class="modal-overlay" id="useractive-modal">
+    <div class="modal">
+      <h3 id="useractive-title">Deactivate user</h3>
+      <p id="useractive-text"></p>
+      <p id="useractive-msg" class="login-msg"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+        <button type="button" class="btn danger" id="useractive-confirm">Deactivate</button>
+      </div>
     </div>
   </div>
 
