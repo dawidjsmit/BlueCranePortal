@@ -505,9 +505,10 @@
   <div class="modal-overlay" id="userlink-modal">
     <div class="modal">
       <h3>Edit user</h3>
-      <p class="muted tiny" id="userlink-who" style="margin-top:-6px"></p>
       <form id="userlink-form">
         <label>Full name <input id="userlink-name" autocomplete="off" /></label>
+        <label>Email (used to sign in) <input id="userlink-email" type="email" autocomplete="off" /></label>
+        <p class="muted tiny">Changing the email changes what they sign in with, straight away. Their password stays the same. Their registry record's email is not changed.</p>
         <label>Role <select id="userlink-role"></select></label>
         <label>Registry record <select id="userlink-record"></select></label>
         <div id="userlink-none" class="userlink-none" hidden>

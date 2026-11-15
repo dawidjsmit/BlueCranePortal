@@ -2499,7 +2499,7 @@ function openUserLinkModal(userId) {
   const p = state.profiles.find((x) => x.id === userId);
   if (!p) return;
   userLinkCtx = { userId };
-  $("#userlink-who").textContent = p.email;
+  $("#userlink-email").value = p.email || "";
   const curRec = recordForUser(p);
   $("#userlink-name").value = realName(p) || (curRec ? recordLabel(p.role, curRec) : "");
   $("#userlink-role").innerHTML = ROLE_ORDER.map((r) =>
@@ -2549,6 +2549,14 @@ $("#userlink-form").addEventListener("submit", async (e) => {
   const p = state.profiles.find((x) => x.id === userLinkCtx.userId);
   const name = $("#userlink-name").value.trim();
   if (!name) { setMsg("userlink-msg", "⚠️ Please enter the user's full name.", false); return; }
+  const email = $("#userlink-email").value.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) { setMsg("userlink-msg", "\u26a0\ufe0f Please enter a valid email address.", false); return; }
+  if (email !== String(p.email || "").toLowerCase()) {
+    // The sign-in email lives in Supabase Auth, so this goes via the Edge Function.
+    setMsg("userlink-msg", "Changing the email\u2026", true);
+    const res = await manageUsers({ action: "update_email", user_id: p.id, email });
+    if (res.error) { setMsg("userlink-msg", "\u26a0\ufe0f " + res.error, false); return; }
+  }
   if (name !== (p.full_name || "")) {
     const { error: nameErr } = await sb.from("profiles").update({ full_name: name }).eq("id", p.id);
     if (nameErr) { setMsg("userlink-msg", "⚠️ " + nameErr.message, false); return; }
