@@ -118,6 +118,10 @@ in the SQL Editor the same way:
   trustee-read-only). Also fills in each user's most recent sign-in so the
   Users screen's "Last log in" column starts populated.
 
+- **`27_drop_communal_entity_type_order.sql`** — removes the unused "Sort
+  order" from communal entity types (they are always listed A–Z). Run it only
+  after the matching app update is live.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons
