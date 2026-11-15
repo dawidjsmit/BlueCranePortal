@@ -441,8 +441,12 @@ tbody tr:hover { background: #f7f9fc; }
 #feedback-thread .fb-item { background: #f9fafb; }
 
 /* Reassign (one line) */
-.reassign-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 14px; font-size: 14px; }
-.reassign-line select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.reassign-line { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-top: 14px; font-size: 14px; white-space: nowrap; }
+/* Override the full-width rule for dropdowns in windows, so it stays on one line. */
+.modal .reassign-line select { width: auto; flex: 0 1 auto; min-width: 0; max-width: 48%; margin: 0;
+  padding: 3px 6px; border-radius: 6px; font-size: 13px; }
+.reassign-line > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.reassign-go { flex: 0 0 auto; }
 .reassign-go { border: 0; background: var(--brand); color: #fff; border-radius: 6px; width: 26px; height: 26px;
   cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
 .reassign-go:hover { background: var(--brand-dark); }
@@ -600,3 +604,4 @@ tbody tr:hover { background: #f7f9fc; }
 .ticket-grid { min-width: 820px; }
 #ticketdel-modal { z-index: 1100; }
 .plan-card-type { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--brand-dark); }
+.fb-open { margin-top: 8px; }

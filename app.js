@@ -3544,8 +3544,10 @@ function feedbackComposer(t, isDraft) {
   }
   // The photo sits inside the same box as the text: it belongs to this
   // feedback and is only uploaded when Post feedback is clicked.
+  // Collapsed at first so the history is visible straight away.
   return `
-    <form id="feedback-form" class="feedback-form">
+    <button type="button" class="btn ghost small fb-open" id="fb-open">💬 Add feedback</button>
+    <form id="feedback-form" class="feedback-form" hidden>
       <div class="fb-compose">
         <textarea id="feedback-body" rows="3" placeholder="Write your feedback…" required></textarea>
         <div class="fb-compose-bar">
@@ -3556,7 +3558,8 @@ function feedbackComposer(t, isDraft) {
             <span id="feedback-photo-name"></span>
             <button type="button" id="feedback-photo-clear" title="Remove photo" aria-label="Remove photo">✕</button>
           </span>
-          <button type="submit" class="btn primary small fb-post">Post feedback</button>
+          <button type="button" class="btn ghost small fb-post" id="fb-cancel">Cancel</button>
+          <button type="submit" class="btn primary small">Post feedback</button>
         </div>
       </div>
       <p class="muted tiny" style="margin:4px 0 0">A photo you attach is uploaded with this feedback when you click Post feedback.</p>
@@ -3700,6 +3703,19 @@ document.addEventListener("change", (e) => {
   if (e.target.id === "feedback-photo-input") showFeedbackPhoto();
 });
 document.addEventListener("click", async (e) => {
+  // Open / close the feedback box.
+  if (e.target.id === "fb-open") {
+    $("#feedback-form").hidden = false;
+    e.target.hidden = true;
+    $("#feedback-body").focus();
+  }
+  if (e.target.id === "fb-cancel") {
+    $("#feedback-form").reset();
+    showFeedbackPhoto();
+    $("#feedback-msg").textContent = "";
+    $("#feedback-form").hidden = true;
+    $("#fb-open").hidden = false;
+  }
   if (e.target.id === "feedback-photo-clear") {
     $("#feedback-photo-input").value = "";
     showFeedbackPhoto();
