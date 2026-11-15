@@ -533,3 +533,25 @@ tbody tr:hover { background: #f7f9fc; }
 .project-ticket { display: flex; align-items: center; gap: 6px; }
 .project-ticket .request-card { flex: 1; }
 .pill.proj-status { background: #e0f2fe; color: #0369a1; }
+
+/* 10 Year Plan matrix */
+.plan-wrap { overflow-x: auto; }
+.plan-matrix { border-collapse: separate; border-spacing: 0; min-width: 1100px; }
+.plan-matrix th, .plan-matrix td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); vertical-align: top; }
+.plan-matrix thead th { text-align: center; white-space: nowrap; }
+.plan-matrix .plan-group { position: sticky; left: 0; z-index: 1; background: #fff; text-align: left;
+  min-width: 130px; max-width: 170px; font-weight: 600; }
+.plan-cell { min-width: 120px; padding: 6px !important; }
+.plan-now { background: #f0f7ff; }
+.plan-card { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; margin-bottom: 6px;
+  background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--brand); border-radius: 8px;
+  padding: 6px 8px; cursor: pointer; font: inherit; }
+.plan-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.plan-card-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.plan-card-meta { font-size: 12px; color: var(--muted); }
+.plan-card .pill { align-self: flex-start; }
+.pill.plan-status { background: #f3e8ff; color: #7e22ce; }
+.plan-add { display: block; width: 100%; border: 1px dashed var(--line); background: none; color: var(--muted);
+  border-radius: 8px; cursor: pointer; font-size: 15px; line-height: 1; padding: 4px 0; }
+.plan-add:hover { color: var(--brand); border-color: var(--brand); }
+.plan-total { font-weight: 700; text-align: right; white-space: nowrap; }

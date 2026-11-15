@@ -129,6 +129,10 @@ in the SQL Editor the same way:
   projects, their links to units / communal entities / service providers, and
   an optional project on each ticket. Starter statuses are added once.
 
+- **`30_ten_year_plan.sql`** — the 10 Year Plan (trustee-only): plan statuses,
+  plan items (name, description, year, budget, optional grouping, status) and
+  their linked projects. Starter statuses are added once.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

@@ -73,7 +73,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], areaGroups: [], projects: [], projectStatuses: [], projectUnits: [], projectAreas: [], projectProviders: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], areaGroups: [], projects: [], projectStatuses: [], projectUnits: [], projectAreas: [], projectProviders: [], planItems: [], planStatuses: [], planItemProjects: [] };
 let recovering = false; // true while handling a password-reset link
 let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
@@ -397,6 +397,7 @@ function navGroups() {
         { id: "reg-gardeners", label: "Gardeners", ico: "🧑‍🌾" },
         { id: "reg-providers", label: "Service providers", ico: "🔧" },
         { id: "projects", label: "Projects", ico: "🏗️" },
+        { id: "plan", label: "10 Year Plan", ico: "📅" },
       ],
     });
     groups.push({
@@ -405,6 +406,7 @@ function navGroups() {
         { id: "layouts", label: "Layouts", ico: "📐" },
         { id: "areagroups", label: "Communal entity groupings", ico: "🗂️" },
         { id: "areatypes", label: "Communal entity types", ico: "🏷️" },
+        { id: "planstatuses", label: "Plan statuses", ico: "🚩" },
         { id: "projectstatuses", label: "Project statuses", ico: "📌" },
         { id: "ticketstatuses", label: "Ticket statuses", ico: "🚦" },
         { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
@@ -451,7 +453,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups, projects, projectStatuses, projectUnits, projectAreas, projectProviders] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups, projects, projectStatuses, projectUnits, projectAreas, projectProviders, planItems, planStatuses, planItemProjects] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -481,6 +483,10 @@ async function loadData() {
     isTrustee() ? sb.from("project_units").select("*") : Promise.resolve({ data: [] }),
     isTrustee() ? sb.from("project_areas").select("*") : Promise.resolve({ data: [] }),
     isTrustee() ? sb.from("project_providers").select("*") : Promise.resolve({ data: [] }),
+    // 10 Year Plan (trustee-only; empty until migration 30 is run).
+    isTrustee() ? sb.from("plan_items").select("*") : Promise.resolve({ data: [] }),
+    isTrustee() ? sb.from("plan_statuses").select("*") : Promise.resolve({ data: [] }),
+    isTrustee() ? sb.from("plan_item_projects").select("*") : Promise.resolve({ data: [] }),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -511,6 +517,10 @@ async function loadData() {
   state.projectUnits = projectUnits.data || [];
   state.projectAreas = projectAreas.data || [];
   state.projectProviders = projectProviders.data || [];
+  state.planItems = planItems.data || [];
+  state.planStatuses = (planStatuses.data || []).slice().sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
+  state.planItemProjects = planItemProjects.data || [];
   state.areaPhotos = areaPhotos.data || [];
   state.registry = {
     trustees: regTrustees.data || [],
@@ -622,6 +632,8 @@ function showView(name) {
     projects: renderProjects,
     projectdetail: renderProjectDetail,
     projectstatuses: renderProjectStatuses,
+    plan: renderPlan,
+    planstatuses: renderPlanStatuses,
     activity: renderActivity,
   }[name];
   if (render) render();
@@ -1941,8 +1953,7 @@ function openProjectModal(p) {
   $("#project-units").innerHTML = checklistHtml("proj-unit",
     state.units.map((u) => ({ value: u.id, label: String(u.number) })), selUnits);
   $("#project-areas").innerHTML = checklistHtml("proj-area",
-    state.areas.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }))
-      .map((a) => ({ value: a.id, label: areaLabel(a) })), selAreas);
+    areasByGrouping(state.areas).map((a) => ({ value: a.id, label: areaFullLabel(a) })), selAreas);
   $("#project-providers").innerHTML = checklistHtml("proj-provider",
     state.registry.providers.filter((r) => regIsCurrent(r) || selProviders.includes(r.id))
       .sort((a, b) => providerName(a).localeCompare(providerName(b)))
@@ -1981,6 +1992,187 @@ $("#project-form").addEventListener("submit", async (e) => {
   closeOverlays();
   await loadData();
   renderProjectDetail(data || id);
+});
+
+/* ---------- 10 Year Plan: plan statuses (trustee) ---------- */
+function planStatusName(id) {
+  return state.planStatuses.find((s) => s.id === id)?.name || "—";
+}
+
+function renderPlanStatuses() {
+  const rows = state.planStatuses.map((s) => {
+    const n = state.planItems.filter((i) => i.status_id === s.id).length;
+    return `<tr>
+    <td><strong>${esc(s.name)}</strong></td>
+    <td class="muted">${esc(s.description || "—")}</td>
+    <td>${n} item${n === 1 ? "" : "s"}</td>
+    <td style="text-align:right"><button class="btn ghost small" data-edit-planstatus="${s.id}">Edit</button></td>
+  </tr>`;
+  }).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🚩 Plan statuses</h2>
+        <button class="btn primary small" id="add-planstatus-btn">+ Add status</button></div>
+      <p class="muted tiny">The statuses a 10 Year Plan item can have (e.g. Planned, Done, Postponed).</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Name</th><th>Description</th><th>Used by</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No statuses yet. Run supabase/30_ten_year_plan.sql first.</td></tr>`}</tbody></table></div>
+    </div>`;
+  $("#add-planstatus-btn").addEventListener("click", () => openPlanStatusModal(null));
+}
+
+function openPlanStatusModal(s) {
+  $("#planstatus-modal-title").textContent = s ? "Edit plan status" : "Add plan status";
+  $("#planstatus-id").value = s?.id || "";
+  $("#planstatus-name").value = s?.name || "";
+  $("#planstatus-description").value = s?.description || "";
+  $("#planstatus-msg").textContent = "";
+  $("#planstatus-modal").classList.add("active");
+}
+
+$("#planstatus-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#planstatus-id").value;
+  const payload = {
+    name: $("#planstatus-name").value.trim(),
+    description: $("#planstatus-description").value.trim() || null,
+  };
+  if (!payload.name) { setMsg("planstatus-msg", "\u26a0\ufe0f Please enter a name.", false); return; }
+  const { error } = id
+    ? await sb.from("plan_statuses").update(payload).eq("id", id)
+    : await sb.from("plan_statuses").insert(payload);
+  if (error) {
+    setMsg("planstatus-msg", error.message.includes("duplicate") ? "That status name already exists."
+      : /plan_statuses/.test(error.message) ? "\u26a0\ufe0f Run supabase/30_ten_year_plan.sql first."
+      : "\u26a0\ufe0f " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
+/* ---------- 10 Year Plan: the matrix (rows = groupings, columns = years) ---------- */
+const PLAN_YEARS = 10;
+let planStartYear = new Date().getFullYear();
+
+const moneyFmt = new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR", maximumFractionDigits: 0 });
+function fmtMoney(n) { return moneyFmt.format(Number(n) || 0); }
+const planItemProjectIds = (id) => state.planItemProjects.filter((x) => x.plan_item_id === id).map((x) => x.project_id);
+
+function renderPlan() {
+  const thisYear = new Date().getFullYear();
+  const years = Array.from({ length: PLAN_YEARS }, (_, i) => planStartYear + i);
+  const lastYear = years[years.length - 1];
+  // Rows: every grouping A–Z, then "No grouping".
+  const rows = state.areaGroups.map((g) => ({ id: g.id, name: g.name }))
+    .concat([{ id: "", name: "No grouping" }]);
+  const groupKey = (i) => (i.group_id && areaGroupName(i.group_id) ? i.group_id : "");
+  const inCell = (gid, y) => state.planItems
+    .filter((i) => groupKey(i) === gid && i.year === y)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
+
+  const card = (i) => {
+    const s = state.planStatuses.find((x) => x.id === i.status_id);
+    const n = planItemProjectIds(i.id).length;
+    return `<button type="button" class="plan-card" data-edit-plan="${i.id}" title="${esc(i.description || i.name)}">
+      <span class="plan-card-name">${esc(i.name)}</span>
+      <span class="plan-card-meta">${fmtMoney(i.budget)}${n ? ` · 🏗️ ${n}` : ""}</span>
+      <span class="pill plan-status"${s?.description ? ` title="${esc(s.description)}"` : ""}>${esc(s ? s.name : "—")}</span>
+    </button>`;
+  };
+
+  const body = rows.map((r) => `<tr>
+      <th class="plan-group">${esc(r.name)}</th>
+      ${years.map((y) => `<td class="plan-cell${y === thisYear ? " plan-now" : ""}">
+        ${inCell(r.id, y).map(card).join("")}
+        <button type="button" class="plan-add" data-add-plan="${r.id}|${y}" title="Add a plan item for ${esc(r.name)} in ${y}" aria-label="Add a plan item for ${esc(r.name)} in ${y}">+</button>
+      </td>`).join("")}
+    </tr>`).join("");
+
+  const total = (y) => state.planItems.filter((i) => i.year === y).reduce((s, i) => s + (Number(i.budget) || 0), 0);
+  const before = state.planItems.filter((i) => i.year < planStartYear).length;
+  const after = state.planItems.filter((i) => i.year > lastYear).length;
+
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>📅 10 Year Plan</h2>
+        <button class="btn primary small" data-add-plan="|${thisYear}">+ Add plan item</button></div>
+      <p class="muted tiny">One row per communal entity grouping, one column per year. Click an item to edit it (you can also change its year), or + to add one in that cell. If an item isn't achieved in its year, the idea is to mark it e.g. Postponed and add a new item in a later year.</p>
+      <div class="filters">
+        <button class="btn ghost small" id="plan-prev">◀ Earlier</button>
+        <strong>${years[0]} – ${lastYear}</strong>
+        <button class="btn ghost small" id="plan-next">Later ▶</button>
+        ${planStartYear !== thisYear ? `<button class="btn ghost small" id="plan-now">Back to ${thisYear}</button>` : ""}
+        ${before || after ? `<span class="muted tiny">${[before ? `${before} item${before === 1 ? "" : "s"} before ${years[0]}` : "", after ? `${after} item${after === 1 ? "" : "s"} after ${lastYear}` : ""].filter(Boolean).join(" · ")}</span>` : ""}
+      </div>
+      <div class="table-wrap plan-wrap"><table class="plan-matrix"><thead><tr>
+        <th class="plan-group">Grouping</th>
+        ${years.map((y) => `<th class="${y === thisYear ? "plan-now" : ""}">${y}</th>`).join("")}
+      </tr></thead><tbody>${body}</tbody>
+      <tfoot><tr><th class="plan-group">Budget total</th>
+        ${years.map((y) => `<td class="plan-total${y === thisYear ? " plan-now" : ""}">${fmtMoney(total(y))}</td>`).join("")}
+      </tr></tfoot></table></div>
+      <p class="muted tiny">Budget totals include every item in that year, whatever its status.</p>
+    </div>`;
+  $("#plan-prev").addEventListener("click", () => { planStartYear -= 1; renderPlan(); });
+  $("#plan-next").addEventListener("click", () => { planStartYear += 1; renderPlan(); });
+  const now = $("#plan-now");
+  if (now) now.addEventListener("click", () => { planStartYear = thisYear; renderPlan(); });
+}
+
+function openPlanModal(item, preset = {}) {
+  $("#plan-modal-title").textContent = item ? "Edit plan item" : "Add plan item";
+  $("#plan-id").value = item?.id || "";
+  $("#plan-name").value = item?.name || "";
+  $("#plan-description").value = item?.description || "";
+  $("#plan-year").value = item?.year ?? preset.year ?? new Date().getFullYear();
+  $("#plan-budget").value = item ? Number(item.budget) : "";
+  const gid = item ? (item.group_id || "") : (preset.group || "");
+  $("#plan-group").innerHTML = `<option value="">— no grouping —</option>` +
+    state.areaGroups.map((g) => `<option value="${g.id}" ${gid === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("");
+  const firstStatus = state.planStatuses.find((s) => /^planned$/i.test(s.name));
+  const sid = item?.status_id || firstStatus?.id || "";
+  $("#plan-status").innerHTML = `<option value="">— choose —</option>` +
+    state.planStatuses.map((s) => `<option value="${s.id}" ${sid === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+  const sel = item ? planItemProjectIds(item.id) : [];
+  $("#plan-projects").innerHTML = state.projects.length
+    ? state.projects.map((p) => `<label class="check"><input type="checkbox" name="plan-project" value="${p.id}" ${sel.includes(p.id) ? "checked" : ""} /> ${esc(p.name)} <span class="muted tiny">· ${esc(projectStatusName(p.status_id))}</span></label>`).join("")
+    : `<p class="muted tiny">No projects yet.</p>`;
+  $("#plan-msg").textContent = "";
+  $("#plan-modal").classList.add("active");
+}
+
+$("#plan-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#plan-id").value || null;
+  const name = $("#plan-name").value.trim();
+  const year = Number($("#plan-year").value);
+  const budgetRaw = $("#plan-budget").value.trim().replace(/[\s,]/g, "");
+  const budget = budgetRaw === "" ? 0 : Number(budgetRaw);
+  const status = $("#plan-status").value;
+  if (!name) { setMsg("plan-msg", "\u26a0\ufe0f Please enter the plan item name.", false); return; }
+  if (!Number.isInteger(year) || year < 2000 || year > 2200) { setMsg("plan-msg", "\u26a0\ufe0f Please enter a year such as " + new Date().getFullYear() + ".", false); return; }
+  if (!Number.isFinite(budget) || budget < 0) { setMsg("plan-msg", "\u26a0\ufe0f The budget must be an amount of 0 or more.", false); return; }
+  if (!status) { setMsg("plan-msg", "\u26a0\ufe0f Please choose a status.", false); return; }
+
+  const { error } = await sb.rpc("save_plan_item", {
+    p_id: id, p_name: name, p_description: $("#plan-description").value.trim(),
+    p_year: year, p_budget: Math.round(budget * 100) / 100,
+    p_group: $("#plan-group").value || null, p_status: status,
+    p_projects: [...$$('#plan-form input[name="plan-project"]:checked')].map((i) => i.value),
+  });
+  if (error) {
+    setMsg("plan-msg", /save_plan_item|plan_items/.test(error.message) && /not find|does not exist/.test(error.message)
+      ? "\u26a0\ufe0f Run supabase/30_ten_year_plan.sql first." : "\u26a0\ufe0f " + error.message, false);
+    return;
+  }
+  // Keep the moved/added item's year in view.
+  if (year < planStartYear) planStartYear = year;
+  if (year >= planStartYear + PLAN_YEARS) planStartYear = year - PLAN_YEARS + 1;
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
 });
 
 /* ---------- Trustee-only registries: Trustees, Gardeners, Service providers ---------- */
@@ -2253,6 +2445,24 @@ $("#areagroup-form").addEventListener("submit", async (e) => {
 });
 
 /* ---------- Communal entity types (trustee) ---------- */
+// "Grouping – Type" for a type id (as in the type dropdowns).
+function areaTypeFullName(id) {
+  const t = state.areaTypes.find((x) => x.id === id);
+  return t ? areaTypeLabel(t) : "—";
+}
+// "Grouping – Type – Code – Name" for a communal entity.
+function areaFullLabel(a) {
+  const t = state.areaTypes.find((x) => x.id === a.type_id);
+  return [t ? areaTypeLabel(t) : "", a.code, a.name].filter(Boolean).join(" – ");
+}
+// Entities ordered by grouping, then type, then code (no type last).
+function areasByGrouping(areas) {
+  const order = new Map(typesByGrouping(state.areaTypes).map((t, i) => [t.id, i]));
+  const rank = (a) => (order.has(a.type_id) ? order.get(a.type_id) : 1e9);
+  return areas.slice().sort((a, b) => rank(a) - rank(b)
+    || String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+}
+
 function areaTypeName(id) {
   return state.areaTypes.find((t) => t.id === id)?.name || "—";
 }
@@ -2372,7 +2582,7 @@ function renderAreas() {
     return `<tr>
       <td><strong>${esc(a.code)}</strong></td>
       <td>${esc(a.name)}</td>
-      <td>${esc(areaTypeName(a.type_id))}</td>
+      <td>${esc(areaTypeFullName(a.type_id))}</td>
       <td>${photos} photo${photos === 1 ? "" : "s"}</td>
       <td style="text-align:right">
         <button class="btn ghost small" data-open-area="${a.id}">Open</button></td>
@@ -3622,6 +3832,14 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.openProject) renderProjectDetail(t.dataset.openProject);
   if (t.dataset.editProject) openProjectModal(state.projects.find((x) => x.id === t.dataset.editProject));
   if (t.dataset.unlinkProjectTicket) setTicketProject(t.dataset.unlinkProjectTicket, null);
+  // 10 Year Plan
+  if (t.dataset.editPlanstatus) openPlanStatusModal(state.planStatuses.find((x) => x.id === t.dataset.editPlanstatus));
+  const planCard = t.closest("[data-edit-plan]");
+  if (planCard) openPlanModal(state.planItems.find((x) => x.id === planCard.dataset.editPlan));
+  if (t.dataset.addPlan !== undefined) {
+    const [group, year] = t.dataset.addPlan.split("|");
+    openPlanModal(null, { group, year: Number(year) });
+  }
   if (t.dataset.delAreaPhoto) deleteAreaPhoto(t.dataset.delAreaPhoto);
 
   // Trustee registries (Trustees / Gardeners / Service providers)
