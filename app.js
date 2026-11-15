@@ -2368,9 +2368,9 @@ function chipList(labels, max = 12) {
 function renderGardenRows() {
   const rows = gardenRows.map((r) => {
     const units = rowIds(r, "garden_report_units", "unit_id").map((id) => gardenLookup.units.find((u) => u.id === id))
-      .filter(Boolean).sort(unitCompare).map(unitChoiceLabel);
+      .filter(Boolean).sort(unitCompare).map((u) => unitChoiceLabel(u).replace("Unit ", ""));   // "01", "02"…
     const areas = areasByGrouping(rowIds(r, "garden_report_areas", "area_id").map((id) => state.areas.find((a) => a.id === id)).filter(Boolean))
-      .map((a) => `${a.code} — ${a.name}`);
+      .map(areaFullLabel);                                                                       // Grouping – Type – Code – Name
     const gardeners = rowIds(r, "garden_report_gardeners", "gardener_id").map(gardenerName).sort();
     const nComments = (r.garden_report_comments || []).length;
     const late = r.captured_late
@@ -2380,9 +2380,9 @@ function renderGardenRows() {
       <td style="white-space:nowrap">${fmtDay(r.action_date)}${late}</td>
       <td><strong>${esc(gardenTaskName(r.task_id))}</strong>${r.description ? `<div class="muted tiny">${esc(r.description)}</div>` : ""}</td>
       <td>${chipList(gardeners)}</td>
-      <td>${chipList(units)}</td>
-      <td>${chipList(areas, 6)}</td>
-      <td style="text-align:right;white-space:nowrap">
+      <td>${chipList(units, Infinity)}</td>
+      <td>${chipList(areas, Infinity)}</td>
+      <td class="gr-actions">
         <button class="icon-btn" data-gr-comments="${r.id}" title="Comments" aria-label="Comments">💬${nComments ? `<span class="tiny">${nComments}</span>` : ""}</button>
         <button class="icon-btn" data-gr-copy="${r.id}" title="Use as a starting point for a new report" aria-label="Copy">📋</button>
         ${edit ? `<button class="icon-btn" data-gr-edit="${r.id}" title="Edit" aria-label="Edit">✏️</button>
