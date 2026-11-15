@@ -4,11 +4,15 @@ Ideas and requests not built yet. Details are agreed when an item is picked up.
 
 ## New
 - **Reporting to the units**
-- **Gardeners day end report**
 
 ## Done
 - **Projects** — built (Registry → Projects, PR #54).
 - **10 year plan** — built (Registry → 10 Year Plan, PR #55).
+- **Gardeners day end report** — built as the Gardening Report (Daily Working → Gardening Report, PR #63).
+
+## Ideas for the Gardening Report
+- **Saved rounds** — name a set of units/entities (e.g. "Front gardens") and tick them in one click.
+- **Per-unit history** — on a unit's screen, show when each gardening task was last done there.
 
 ## Carried over
 - **Full user activity tracking** — record what users do in the system, not
