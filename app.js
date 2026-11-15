@@ -73,7 +73,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], areaGroups: [] };
 let recovering = false; // true while handling a password-reset link
 let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
@@ -402,6 +402,7 @@ function navGroups() {
       title: "Admin",
       items: [
         { id: "layouts", label: "Layouts", ico: "📐" },
+        { id: "areagroups", label: "Communal entity groupings", ico: "🗂️" },
         { id: "areatypes", label: "Communal entity types", ico: "🏷️" },
         { id: "ticketstatuses", label: "Ticket statuses", ico: "🚦" },
         { id: "tickettypes", label: "Ticket types", ico: "🏷️" },
@@ -448,7 +449,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -471,6 +472,7 @@ async function loadData() {
     sb.from("unit_owners").select("*"),
     sb.from("ticket_status_info").select("*"),
     isTrustee() ? sb.from("user_last_login").select("*") : Promise.resolve({ data: [] }),
+    sb.from("communal_area_groups").select("*"),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -489,6 +491,9 @@ async function loadData() {
   state.conductDoc = (conductDocs.data && conductDocs.data[0]) || null;
   // Communal entity types are always shown A–Z by name.
   state.areaTypes = (areaTypes.data || []).slice().sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
+  // Groupings A–Z (empty until migration 28 is run).
+  state.areaGroups = (areaGroups.data || []).slice().sort((a, b) =>
     String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
   state.areas = areas.data || [];
   state.areaPhotos = areaPhotos.data || [];
@@ -590,6 +595,7 @@ function showView(name) {
     layouts: renderLayouts,
     tickettypes: renderTicketTypes,
     ticketstatuses: renderTicketStatuses,
+    areagroups: renderAreaGroups,
     areatypes: renderAreaTypes,
     areas: renderAreas,
     areadetail: renderAreaDetail,
@@ -1862,13 +1868,105 @@ $("#reg-form").addEventListener("submit", async (e) => {
   refreshActiveView();
 });
 
+/* ---------- Communal entity groupings (trustee) ---------- */
+function areaGroupName(id) {
+  return state.areaGroups.find((g) => g.id === id)?.name || "";
+}
+// "Grouping – Type" wherever a type is chosen (just the type if it has no grouping).
+function areaTypeLabel(t) {
+  const g = areaGroupName(t.group_id);
+  return g ? `${g} – ${t.name}` : t.name;
+}
+// Types ordered by grouping, then type (types without a grouping last).
+function typesByGrouping(types) {
+  return types.slice().sort((a, b) => {
+    const ga = areaGroupName(a.group_id), gb = areaGroupName(b.group_id);
+    if (!ga !== !gb) return ga ? -1 : 1;
+    return ga.localeCompare(gb, undefined, { sensitivity: "base" })
+      || String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" });
+  });
+}
+// <option>s for a type picker.
+function areaTypeOptions(types, selectedId) {
+  return typesByGrouping(types).map((t) =>
+    `<option value="${t.id}" ${selectedId === t.id ? "selected" : ""}>${esc(areaTypeLabel(t))}</option>`).join("");
+}
+
+function renderAreaGroups() {
+  const rows = state.areaGroups.map((g) => {
+    const n = state.areaTypes.filter((t) => t.group_id === g.id).length;
+    return `<tr>
+    <td><strong>${esc(g.name)}</strong></td>
+    <td class="muted">${esc(g.description || "—")}</td>
+    <td>${n} type${n === 1 ? "" : "s"}</td>
+    <td style="text-align:right"><button class="btn ghost small" data-edit-areagroup="${g.id}">Edit</button></td>
+  </tr>`;
+  }).join("");
+  $("#main").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h2>🗂️ Communal entity groupings</h2>
+        <button class="btn primary small" id="add-areagroup-btn">+ Add grouping</button></div>
+      <p class="muted tiny">Groupings for communal entity types (e.g. Garden, Infrastructure). Link a type to a grouping on the Communal entity types screen.</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Name</th><th>Description</th><th>Types</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No groupings yet.</td></tr>`}</tbody></table></div>
+    </div>`;
+  $("#add-areagroup-btn").addEventListener("click", () => openAreaGroupModal(null));
+}
+
+function openAreaGroupModal(g) {
+  $("#areagroup-modal-title").textContent = g ? "Edit grouping" : "Add grouping";
+  $("#areagroup-id").value = g?.id || "";
+  $("#areagroup-name").value = g?.name || "";
+  $("#areagroup-description").value = g?.description || "";
+  $("#areagroup-msg").textContent = "";
+  $("#areagroup-modal").classList.add("active");
+}
+
+$("#areagroup-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = $("#areagroup-id").value;
+  const payload = {
+    name: $("#areagroup-name").value.trim(),
+    description: $("#areagroup-description").value.trim() || null,
+  };
+  if (!payload.name) { setMsg("areagroup-msg", "\u26a0\ufe0f Please enter a name.", false); return; }
+  const { error } = id
+    ? await sb.from("communal_area_groups").update(payload).eq("id", id)
+    : await sb.from("communal_area_groups").insert(payload);
+  if (error) {
+    setMsg("areagroup-msg", error.message.includes("duplicate") ? "That grouping name already exists."
+      : /communal_area_groups/.test(error.message) ? "\u26a0\ufe0f Run supabase/28_communal_entity_groupings.sql first."
+      : "\u26a0\ufe0f " + error.message, false);
+    return;
+  }
+  closeOverlays();
+  await loadData();
+  refreshActiveView();
+});
+
 /* ---------- Communal entity types (trustee) ---------- */
 function areaTypeName(id) {
   return state.areaTypes.find((t) => t.id === id)?.name || "—";
 }
 
+// Grouping filter on the types screen ("" = all, "none" = no grouping, else a grouping id).
+let areaTypeGroupFilter = "";
+
 function renderAreaTypes() {
-  const rows = state.areaTypes.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
+  const all = state.areaTypes;
+  const count = (id) => all.filter((t) => t.group_id === id).length;
+  const ungrouped = all.filter((t) => !t.group_id || !areaGroupName(t.group_id)).length;
+  const opts = [{ value: "", label: `All groupings (${all.length})` }]
+    .concat(state.areaGroups.map((g) => ({ value: g.id, label: `${g.name} (${count(g.id)})` })));
+  if (ungrouped) opts.push({ value: "none", label: `No grouping (${ungrouped})` });
+  if (!opts.some((o) => o.value === areaTypeGroupFilter)) areaTypeGroupFilter = "";
+  const f = areaTypeGroupFilter;
+  const shown = typesByGrouping(all.filter((t) =>
+    !f || (f === "none" ? !areaGroupName(t.group_id) : t.group_id === f)));
+
+  const rows = shown.map((tt) => `<tr class="${tt.active ? "" : "inactive-row"}">
+    <td>${esc(areaGroupName(tt.group_id)) || '<span class="muted">—</span>'}</td>
     <td><strong>${esc(tt.name)}</strong></td>
     <td class="muted">${esc(tt.description || "—")}</td>
     <td>${tt.active ? '<span class="pill approved">Active</span>' : '<span class="pill rejected">Hidden</span>'}</td>
@@ -1876,14 +1974,26 @@ function renderAreaTypes() {
   </tr>`).join("");
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🏷️ Communal entity types</h2>
+      <div class="panel-head"><h2>🏷 Communal entity types</h2>
         <button class="btn primary small" id="add-areatype-btn">+ Add type</button></div>
-      <p class="muted tiny">Types of communal entity (Road, Gate, Grass, Flower Bed, Lamp pole, …).</p>
+      <p class="muted tiny">Types of communal entity (Road, Gate, Grass, Flower Bed, Lamp pole, …), each optionally in a grouping.</p>
+      <div class="filters">
+        <label>Grouping
+          <select id="areatype-group-filter">
+            ${opts.map((o) => `<option value="${o.value}" ${o.value === f ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+          </select>
+        </label>
+        ${f ? `<span class="muted tiny">Showing ${shown.length} of ${all.length}</span>` : ""}
+      </div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Name</th><th>Description</th><th>Status</th><th></th>
-      </tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No types yet.</td></tr>`}</tbody></table></div>
+        <th>Grouping</th><th>Name</th><th>Description</th><th>Status</th><th></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">${all.length ? "No types in this grouping." : "No types yet."}</td></tr>`}</tbody></table></div>
     </div>`;
   $("#add-areatype-btn").addEventListener("click", () => openAreaTypeModal(null));
+  $("#areatype-group-filter").addEventListener("change", (e) => {
+    areaTypeGroupFilter = e.target.value;
+    renderAreaTypes();
+  });
 }
 
 function openAreaTypeModal(tt) {
@@ -1891,6 +2001,10 @@ function openAreaTypeModal(tt) {
   $("#areatype-id").value = tt?.id || "";
   $("#areatype-name").value = tt?.name || "";
   $("#areatype-description").value = tt?.description || "";
+  // New types default to the grouping being filtered on.
+  const gid = tt ? tt.group_id : (areaTypeGroupFilter && areaTypeGroupFilter !== "none" ? areaTypeGroupFilter : "");
+  $("#areatype-group").innerHTML = `<option value="">— no grouping —</option>` +
+    state.areaGroups.map((g) => `<option value="${g.id}" ${gid === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("");
   $("#areatype-active").checked = tt ? !!tt.active : true;
   $("#areatype-msg").textContent = "";
   $("#areatype-modal").classList.add("active");
@@ -1903,6 +2017,7 @@ $("#areatype-form").addEventListener("submit", async (e) => {
     name: $("#areatype-name").value.trim(),
     description: $("#areatype-description").value.trim() || null,
     active: $("#areatype-active").checked,
+    group_id: $("#areatype-group").value || null,
   };
   const { error } = id
     ? await sb.from("communal_area_types").update(payload).eq("id", id)
@@ -1933,8 +2048,8 @@ function filterAreasByType(areas, filter) {
 function areaTypeFilterOptions(areas, types) {
   const count = (id) => areas.filter((a) => a.type_id === id).length;
   const opts = [{ value: "", label: `All types (${areas.length})` }];
-  types.filter((t) => t.active || count(t.id) > 0)
-    .forEach((t) => opts.push({ value: t.id, label: `${t.name} (${count(t.id)})` }));
+  typesByGrouping(types.filter((t) => t.active || count(t.id) > 0))
+    .forEach((t) => opts.push({ value: t.id, label: `${areaTypeLabel(t)} (${count(t.id)})` }));
   const untyped = areas.filter((a) => !a.type_id).length;
   if (untyped) opts.push({ value: "none", label: `No type (${untyped})` });
   return opts;
@@ -1991,8 +2106,7 @@ function openAreaModal(area) {
   $("#area-name").value = area?.name || "";
   $("#area-description").value = area?.description || "";
   $("#area-type").innerHTML = `<option value="">— type —</option>` +
-    state.areaTypes.filter((t) => t.active || t.id === area?.type_id)
-      .map((t) => `<option value="${t.id}" ${area?.type_id === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("");
+    areaTypeOptions(state.areaTypes.filter((t) => t.active || t.id === area?.type_id), area?.type_id);
   $("#area-msg").textContent = "";
   $("#area-modal").classList.add("active");
 }
@@ -3042,7 +3156,7 @@ function openTicketModal(ticket) {
 
   // Communal entity type (filters the entity list) + entity (both optional).
   $("#ticket-areatype").innerHTML = `<option value="">— type —</option>` +
-    state.areaTypes.filter((t) => t.active).map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
+    areaTypeOptions(state.areaTypes.filter((t) => t.active), null);
   // If editing a communal-entity ticket, preselect its type.
   if (ticket?.communal_area_id) {
     const a = state.areas.find((x) => x.id === ticket.communal_area_id);
@@ -3183,6 +3297,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editStatus) openStatusModal(t.dataset.editStatus);
 
   // Communal entities
+  if (t.dataset.editAreagroup) openAreaGroupModal(state.areaGroups.find((x) => x.id === t.dataset.editAreagroup));
   if (t.dataset.editAreatype) openAreaTypeModal(state.areaTypes.find((x) => x.id === t.dataset.editAreatype));
   if (t.dataset.editArea) openAreaModal(state.areas.find((x) => x.id === t.dataset.editArea));
   if (t.dataset.openArea) renderAreaDetail(t.dataset.openArea);

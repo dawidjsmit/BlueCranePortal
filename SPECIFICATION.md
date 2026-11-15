@@ -218,6 +218,10 @@ Ticket types, Users.
   pets, and (owners/trustees) linked users. Global **Owners/Tenants/Occupants/
   Pets** tabs list across all units with a clickable chip back to the unit.
 - **Layouts / Ticket types / Users** — trustee maintenance screens.
+- **Communal entity groupings** (Admin) — name + description (`communal_area_groups`).
+  Each communal entity type may have one grouping (`communal_area_types.group_id`);
+  the types screen has a Grouping column and filter. Every type picker shows
+  "Grouping – Type", ordered by grouping then type (ungrouped types last).
 - **Users** — list (pending, active, deactivated), approve & link, **+ Add
   user**, Deactivate / Reactivate (in-app confirmation), Last log in column with
   a 📜 shortcut to that user's activity.

@@ -122,6 +122,9 @@ in the SQL Editor the same way:
   communal entity types and ticket types (both are always listed A–Z). Run it
   only after the matching app update is live.
 
+- **`28_communal_entity_groupings.sql`** — Communal entity groupings (name +
+  description) and an optional grouping on each communal entity type.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons
