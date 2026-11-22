@@ -707,3 +707,10 @@ span.new-comments { padding: 0 4px; }
 .ticket-due span { color: var(--ink); font-weight: 600; }
 .overdue, .ticket-due span.overdue { color: #dc2626 !important; font-weight: 700; }
 .modal .reassign-line input[type="date"] { width: auto; margin: 0; padding: 3px 6px; border-radius: 6px; font-size: 13px; }
+
+/* Ticket view: tighter action block (feedback, reassign, assign, due date) */
+.ticket-actions-block { margin-top: 10px; }
+.ticket-actions-block .fb-open { margin-top: 0; }
+.ticket-actions-block .reassign-line { margin-top: 8px; }
+#assign-msg:empty, #due-msg:empty, #reassign-msg:empty, #feedback-msg:empty { display: none; }
+.fb-history-title { margin-top: 16px; }

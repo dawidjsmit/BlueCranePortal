@@ -2644,6 +2644,11 @@ document.addEventListener("click", (e) => {
   const none = e.target.closest("[data-gr-none]");
   if (none) $$(`#garden-form input[name="${none.dataset.grNone}"]`).forEach((i) => { i.checked = false; });
   if (e.target.id === "garden-last") gardenUseLast();
+  // Project form: Select all / Unselect all units.
+  const pAll = e.target.closest("[data-proj-all]");
+  if (pAll) $$(`#project-form input[name="${pAll.dataset.projAll}"]`).forEach((i) => { i.checked = true; });
+  const pNone = e.target.closest("[data-proj-none]");
+  if (pNone) $$(`#project-form input[name="${pNone.dataset.projNone}"]`).forEach((i) => { i.checked = false; });
 });
 document.addEventListener("change", (e) => {
   if (e.target.name === "gr-task") updateGardenSaveLabel();
@@ -4033,10 +4038,8 @@ async function openTicket(id) {
       ${isDraft ? "" : `<span class="ticket-due">Due Date: ${dueDateHtml(t, "Not specified")}</span>`}
     </div>
     ${statusDesc(t.status) ? `<p class="status-hint">ℹ️ ${esc(statusDesc(t.status))}</p>` : ""}
-    <dl class="detail-grid">
-      <dt>${t.unit_id ? "Relates to a Unit:" : t.communal_area_id ? "Relates to a Communal Entity:" : "Relates to:"}</dt><dd>${esc(ticketRelatesDetail(t))}</dd>
-      ${isTrustee() && t.project_id ? `<dt>Project</dt><dd>${esc(projectName(t.project_id) || "—")}</dd>` : ""}
-    </dl>
+    <div class="ticket-meta">${t.unit_id ? "Relates to a Unit:" : t.communal_area_id ? "Relates to a Communal Entity:" : "Relates to:"} <strong>${esc(ticketRelatesDetail(t))}</strong></div>
+    ${isTrustee() && t.project_id ? `<div class="ticket-meta">Project: <strong>${esc(projectName(t.project_id) || "—")}</strong></div>` : ""}
     <p class="ticket-desc">${esc(t.description) || "<em>No description.</em>"}</p>
     <div class="ticket-meta">Logged by ${esc(loggerName(t))}${t.logged_by_role ? " (" + esc(ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""} · ${esc(fmtDateTimeFull(t.created_at))}</div>
     <div class="ticket-meta">Assigned to Role: <strong>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "— (not sent yet)"}</strong>
@@ -4059,12 +4062,14 @@ async function openTicket(id) {
     </div>
     <p id="ticket-photo-msg" class="login-msg"></p>
 
-    ${reassignPanel(t, isDraft)}
-    ${assignUserPanel(t, isDraft)}
-    ${dueDatePanel(t, isDraft)}
+    <div class="ticket-actions-block">
+      ${feedbackComposer(t, isDraft)}
+      ${reassignPanel(t, isDraft)}
+      ${assignUserPanel(t, isDraft)}
+      ${dueDatePanel(t, isDraft)}
+    </div>
 
-    <h4 style="margin:14px 0 0">Feedback</h4>
-    ${feedbackComposer(t, isDraft)}
+    <h5 class="fb-history-title">Feedback History <span class="muted tiny">(latest first)</span></h5>
     <div id="feedback-thread"><p class="muted tiny">Loading…</p></div>`;
 
   $("#detail-modal").classList.add("active");
@@ -4215,8 +4220,7 @@ function feedbackComposer(t, isDraft) {
       </div>
       <p class="muted tiny" style="margin:4px 0 0">A photo you attach is uploaded with this feedback when you click Post feedback.</p>
       <p id="feedback-msg" class="login-msg"></p>
-    </form>
-    <h5 class="fb-history-title">History <span class="muted tiny">(latest first)</span></h5>`;
+    </form>`;
 }
 
 async function renderFeedbackThread(ticketId) {
