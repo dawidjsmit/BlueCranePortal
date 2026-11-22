@@ -438,14 +438,15 @@ function buildTabs() {
     </div>`;
   }).join("");
 
-  // Account actions pinned to the bottom of the sidebar.
-  const footer = `
-    <div class="nav-footer">
+  // Account actions at the TOP of the menu, side by side, so they are always
+  // visible (on phones the bottom of the menu can sit behind the browser bar).
+  const account = `
+    <div class="nav-account">
       <button class="nav-btn" id="set-pw-btn"><span class="nav-ico">🔑</span><span>Password</span></button>
       <button class="nav-btn" id="signout"><span class="nav-ico">🚪</span><span>Sign out</span></button>
     </div>`;
 
-  $("#nav").innerHTML = html + footer;
+  $("#nav").innerHTML = account + html;
   $("#signout").addEventListener("click", () => sb.auth.signOut());
   $("#set-pw-btn").addEventListener("click", () => showSetPassword());
 }
