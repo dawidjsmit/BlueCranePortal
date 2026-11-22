@@ -173,6 +173,10 @@ in the SQL Editor the same way:
   (`trustees.is_helper`). Helpers are full trustees; the app shows a 🤝 Helper badge.
   Run this before editing a trustee after the update.
 
+- **`41_feedback_author_names.sql`** — saves the author's name with each ticket
+  history entry and the logger's name with each ticket, so everyone (not only
+  trustees) sees names. Each entry is stamped with the signed-in user who did it.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

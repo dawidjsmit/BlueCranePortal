@@ -121,9 +121,14 @@ by others since then; lines with unread comments by others show "💬 new" until
 opened (`garden_mark_report_seen`). The Dashboard shows a box when there is
 something new (`garden_whats_new`).
 
+**Ticket history names** (migration 41): each history entry stores `author_name`
+(and `author_id` / `author_role` are always the signed-in user who did it, by
+trigger), and each ticket stores `logged_by_name`. History shows the name (never
+"You"), then the role, then 🤝 for helper trustees.
+
 **Helper trustees** (migration 40): a tick box on the Trustee registry record
 (`trustees.is_helper`). A helper is a full trustee with identical access; the app
-only shows a 🤝 Helper badge: Trustees list, Users screen, ticket feedback history,
+only shows a 🤝 icon next to their name: Trustees list, Users screen, ticket feedback history,
 the ticket's assigned user, and every list where a trustee is chosen (assign user,
 project Run by, Add / Edit user record pickers, User activity filter), plus the
 project Run by display. `helper_trustee_ids()` tells the app who is a helper;
