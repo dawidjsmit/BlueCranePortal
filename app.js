@@ -3975,10 +3975,13 @@ function iHoldAssignedRole(t) {
 
 // Reassign the ticket to another role (its own action, not part of feedback).
 // Trustees always; otherwise whoever holds the role it's assigned to.
+// Reassign: only a trustee, or the person the ticket is assigned to; only
+// while Sent, Busy or Waiting; tickets without a unit can't go to unit roles.
 function reassignPanel(t, isDraft) {
-  if (isDraft || ["complete", "cancelled"].includes(t.status)) return "";
-  if (!(isTrustee() || iHoldAssignedRole(t))) return "";
-  const opts = ROUTE_ROLES.filter((r) => r !== t.assigned_role)
+  if (isDraft || !["sent", "busy", "waiting"].includes(t.status)) return "";
+  if (!(isTrustee() || (t.assigned_user_id === me.id && iHoldAssignedRole(t)))) return "";
+  const unitRoles = ["owner", "tenant", "occupant"];
+  const opts = ROUTE_ROLES.filter((r) => r !== t.assigned_role && (t.unit_id || !unitRoles.includes(r)))
     .map((r) => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join("");
   return `
     <div class="reassign-line">
@@ -3993,7 +3996,7 @@ function reassignPanel(t, isDraft) {
 // Assigned user. Trustees: anybody in the ticket's role, any time.
 // Someone holding the role: themselves only (or unassign themselves).
 function assignUserPanel(t, isDraft) {
-  if (isDraft || !t.assigned_role) return "";
+  if (isDraft || !t.assigned_role || ["complete", "cancelled"].includes(t.status)) return "";
   if (isTrustee()) {
     // Options are filled in after the window opens (people in the role).
     return `
@@ -4004,7 +4007,7 @@ function assignUserPanel(t, isDraft) {
     </div>
     <p id="assign-msg" class="login-msg"></p>`;
   }
-  if (!iHoldAssignedRole(t) || ["complete", "cancelled"].includes(t.status)) return "";
+  if (!iHoldAssignedRole(t)) return "";
   return `
     <div class="reassign-line">
       ${t.assigned_user_id === me.id
