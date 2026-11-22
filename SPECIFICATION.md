@@ -128,7 +128,7 @@ trigger), and each ticket stores `logged_by_name`. History shows the name (never
 
 **Helper trustees** (migration 40): a tick box on the Trustee registry record
 (`trustees.is_helper`). A helper is a full trustee with identical access; the app
-only shows a 🤝 Helper badge: Trustees list, Users screen, ticket feedback history,
+only shows a 🤝 icon next to their name: Trustees list, Users screen, ticket feedback history,
 the ticket's assigned user, and every list where a trustee is chosen (assign user,
 project Run by, Add / Edit user record pickers, User activity filter), plus the
 project Run by display. `helper_trustee_ids()` tells the app who is a helper;

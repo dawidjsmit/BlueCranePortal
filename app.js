@@ -1943,9 +1943,9 @@ const projTickets = (pid) => state.tickets.filter((t) => t.project_id === pid);
 function projectName(id) {
   return state.projects.find((p) => p.id === id)?.name || "";
 }
-// Helper trustees: full trustees, shown with a 🤝 Helper badge.
+// Helper trustees: full trustees, shown with a 🤝 icon next to their name.
 function isHelperUser(profileId) { return !!profileId && state.helperIds.has(profileId); }
-function helperBadge() { return ` <span class="helper-badge" title="Helper trustee — full trustee access">🤝 Helper</span>`; }
+function helperBadge() { return ` <span class="helper-icon" title="Helper trustee — full trustee access">🤝</span>`; }
 const HELPER_TEXT = " 🤝";   // for dropdown options (plain text only; the icon is enough)
 
 function trusteeName(id) {
@@ -2787,7 +2787,7 @@ const REGISTRIES = {
       { key: "unit_id", label: "Lives in unit", type: "unit" },
       { key: "service_start", label: "Service start date", type: "date", required: true },
       { key: "service_end", label: END_LABEL, type: "date" },
-      { key: "is_helper", label: "Helper trustee (full trustee access; shown with a 🤝 Helper badge)", type: "checkbox" },
+      { key: "is_helper", label: "Helper trustee (full trustee access; shown with a 🤝 next to their name)", type: "checkbox" },
     ],
     columns: [
       ["Name", (r) => `<strong>${esc(fullName(r))}</strong>${r.is_helper ? helperBadge() : ""}`],
@@ -4199,7 +4199,7 @@ async function renderFeedbackThread(ticketId) {
     const imgs = (photosByFb[f.id] || []).map((p) =>
       `<a href="${publicUrl(p.storage_path)}" target="_blank" rel="noopener"><img src="${publicUrl(p.storage_path)}" class="fb-img" loading="lazy" /></a>`).join("");
     return `<div class="fb-item">
-      <div class="fb-head"><strong>${esc(who)}</strong>${role ? ` <span class="muted tiny">· ${esc(role)}</span>` : ""}${isHelperUser(f.author_id) ? ' <span class="helper-icon" title="Helper trustee">🤝</span>' : ""}
+      <div class="fb-head"><strong>${esc(who)}</strong>${role ? ` <span class="muted tiny">· ${esc(role)}</span>` : ""}${isHelperUser(f.author_id) ? helperBadge() : ""}
         <span class="tl-time">${fmtDate(f.created_at)}</span></div>
       <div class="fb-body">${esc(f.body)}</div>
       ${imgs ? `<div class="fb-imgs">${imgs}</div>` : ""}
