@@ -121,6 +121,14 @@ by others since then; lines with unread comments by others show "💬 new" until
 opened (`garden_mark_report_seen`). The Dashboard shows a box when there is
 something new (`garden_whats_new`).
 
+**Helper trustees** (migration 40): a tick box on the Trustee registry record
+(`trustees.is_helper`). A helper is a full trustee with identical access; the app
+only shows a 🤝 Helper badge: Trustees list, Users screen, ticket feedback history,
+the ticket's assigned user, and every list where a trustee is chosen (assign user,
+project Run by, Add / Edit user record pickers, User activity filter), plus the
+project Run by display. `helper_trustee_ids()` tells the app who is a helper;
+`is_helper_trustee()` is ready for any future limits.
+
 **Adding users:** a trustee can create a login on the Users screen
 (**+ Add user**: role, an unlinked registry record, name, email, password of at
 least 6 characters). The user is approved and linked straight away. This runs
