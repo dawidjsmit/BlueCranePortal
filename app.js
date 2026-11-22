@@ -665,8 +665,12 @@ function layoutLabel(id) {
 }
 
 // Is this ticket currently waiting on a role I hold on its unit?
+// "Needs my Feedback": an active ticket (Sent, Busy or Waiting — not Parked,
+// Complete, Cancelled or a draft) in a role I hold, that is either assigned
+// to me or not yet taken by anybody.
 function needsMyAction(t) {
-  if (t.status === "complete" || t.status === "cancelled") return false;
+  if (!["sent", "busy", "waiting"].includes(t.status)) return false;
+  if (t.assigned_user_id && t.assigned_user_id !== me.id) return false;
   if (isTrustee()) return t.assigned_role === "trustee";
   if (!t.assigned_role) return false;
   if (t.assigned_role === "owner") return amOwnerOf(t.unit_id);
@@ -818,7 +822,7 @@ function renderNeedsFeedback() {
   $("#main").innerHTML = `
     <div class="panel">
       <div class="panel-head"><h2>⏳ Needs my Feedback</h2></div>
-      <p class="muted tiny">Tickets assigned to a role you hold${isTrustee() ? " (Trustee)" : ""}, waiting for you to respond or act. A ticket leaves this list once it is reassigned to another role, completed or cancelled.</p>
+      <p class="muted tiny">Sent, Busy or Waiting tickets in a role you hold${isTrustee() ? " (Trustee)" : ""} that are assigned to you or not yet taken by anybody. A ticket leaves this list when someone else in your role takes it, or it is reassigned, parked, completed or cancelled.</p>
       ${ticketGrid(mine, { empty: "🎉 Nothing waiting on you right now." })}
     </div>`;
 }

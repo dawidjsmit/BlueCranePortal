@@ -64,6 +64,10 @@ then the history newest first. Posting as the holder marks the ticket Busy
 (RPC `mark_ticket_busy`) only from Sent or Waiting; Parked stays Parked. Trustees
 reopen a Parked / Complete / Cancelled ticket with ▶️ Mark Busy. "This ticket relates to" is picked with icon tiles.
 
+**Needs my Feedback** (also the Dashboard count): tickets with status Sent, Busy or
+Waiting, in a role the user holds, and either assigned to them or not yet assigned
+to anybody. Parked tickets and tickets taken by someone else in the role are left out.
+
 **Ticket lists:** All Tickets, My Tickets and Needs my Feedback use the same grid
 (Logged, Heading, Unit / entity, Type, Assigned to Role, Logged by, Status), each in
 one panel. My Tickets: latest first, status quick filters (Create shown as
