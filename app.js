@@ -73,7 +73,7 @@ const ROUTE_ROLES = ["trustee", "owner", "tenant", "occupant", "gardener", "serv
 
 let sb = null;        // supabase client
 let me = null;        // current profile row
-let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], areaGroups: [], projects: [], projectStatuses: [], projectUnits: [], projectAreas: [], projectProviders: [], planItems: [], planStatuses: [], planItemProjects: [], gardenTasks: [] };
+let state = { units: [], requests: [], profiles: [], layouts: [], owners: [], tenants: [], occupants: [], pets: [], unitPhotos: [], members: [], tickets: [], ticketTypes: [], ticketPhotos: [], conductDoc: null, areaTypes: [], areas: [], areaPhotos: [], registry: { trustees: [], gardeners: [], providers: [] }, unitOwners: [], ticketStatusInfo: [], helperIds: new Set(), areaGroups: [], projects: [], projectStatuses: [], projectUnits: [], projectAreas: [], projectProviders: [], planItems: [], planStatuses: [], planItemProjects: [], gardenTasks: [] };
 let recovering = false; // true while handling a password-reset link
 let aiEngagementRows = []; // cache for the trustee AI-engagement screen
 
@@ -452,7 +452,7 @@ function buildTabs() {
 
 /* ---------- Data loading (RLS filters automatically) ---------- */
 async function loadData() {
-  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups, projects, projectStatuses, projectUnits, projectAreas, projectProviders, planItems, planStatuses, planItemProjects, gardenTasks] = await Promise.all([
+  const [units, tickets, profiles, layouts, owners, tenants, occupants, pets, unitPhotos, members, ticketTypes, ticketPhotos, conductDocs, areaTypes, areas, areaPhotos, regTrustees, regGardeners, regProviders, unitOwners, ticketStatusInfo, lastLogins, areaGroups, projects, projectStatuses, projectUnits, projectAreas, projectProviders, planItems, planStatuses, planItemProjects, gardenTasks, helperIds] = await Promise.all([
     sb.from("units").select("*").order("number"),
     sb.from("tickets").select("*").order("created_at", { ascending: false }),
     isTrustee() ? sb.from("profiles").select("*").order("created_at") : Promise.resolve({ data: [] }),
@@ -488,6 +488,8 @@ async function loadData() {
     isTrustee() ? sb.from("plan_item_projects").select("*") : Promise.resolve({ data: [] }),
     // Gardening tasks (trustees + gardeners; empty until migration 35 is run).
     isTrustee() || me.role === "gardener" ? sb.from("gardening_tasks").select("*") : Promise.resolve({ data: [] }),
+    // Which users are helper trustees (empty until migration 40 is run).
+    sb.rpc("helper_trustee_ids"),
   ]);
   state.units = (units.data || []).slice().sort(unitCompare);
   state.tickets = tickets.data || [];
@@ -532,6 +534,7 @@ async function loadData() {
   };
   state.unitOwners = unitOwners.data || [];
   state.ticketStatusInfo = ticketStatusInfo.data || [];
+  state.helperIds = new Set(Array.isArray(helperIds.data) ? helperIds.data : []);
   state.lastLogin = Object.fromEntries((lastLogins.data || []).map((r) => [r.profile_id, r.last_login]));
   aiEngagementRows = []; // force AI-engagement list to reload fresh
 }
@@ -1930,6 +1933,11 @@ const projTickets = (pid) => state.tickets.filter((t) => t.project_id === pid);
 function projectName(id) {
   return state.projects.find((p) => p.id === id)?.name || "";
 }
+// Helper trustees: full trustees, shown with a 🤝 Helper badge.
+function isHelperUser(profileId) { return !!profileId && state.helperIds.has(profileId); }
+function helperBadge() { return ` <span class="helper-badge" title="Helper trustee — full trustee access">🤝 Helper</span>`; }
+const HELPER_TEXT = " 🤝 Helper";   // for dropdown options (plain text only)
+
 function trusteeName(id) {
   const t = state.registry.trustees.find((x) => x.id === id);
   return t ? fullName(t) : "";
@@ -1957,7 +1965,7 @@ function renderProjects() {
     return `<tr>
       <td><strong>${esc(p.name)}</strong></td>
       <td>${projectStatusPill(p)}</td>
-      <td>${esc(trusteeName(p.run_by_trustee_id) || "—")}</td>
+      <td>${esc(trusteeName(p.run_by_trustee_id) || "—")}${state.registry.trustees.find((x) => x.id === p.run_by_trustee_id)?.is_helper ? helperBadge() : ""}</td>
       <td style="white-space:nowrap">${fmtDay(p.start_date)}</td>
       <td style="white-space:nowrap">${p.due_date ? fmtDay(p.due_date) : "—"}</td>
       <td style="white-space:nowrap">${p.finish_date ? fmtDay(p.finish_date) : "—"}</td>
@@ -2017,7 +2025,7 @@ function renderProjectDetail(projectId) {
         <dt>Start date</dt><dd>${fmtDay(p.start_date)}</dd>
         <dt>Due date</dt><dd>${p.due_date ? fmtDay(p.due_date) : "—"}</dd>
         <dt>Finish date</dt><dd>${p.finish_date ? fmtDay(p.finish_date) : "—"}</dd>
-        <dt>Run by</dt><dd>${esc(trusteeName(p.run_by_trustee_id) || "—")}</dd>
+        <dt>Run by</dt><dd>${esc(trusteeName(p.run_by_trustee_id) || "—")}${state.registry.trustees.find((x) => x.id === p.run_by_trustee_id)?.is_helper ? helperBadge() : ""}</dd>
         <dt>Description</dt><dd>${esc(p.description || "—")}</dd>
       </dl>
     </div>
@@ -2096,7 +2104,7 @@ function openProjectModal(p) {
   const trustees = state.registry.trustees.filter((t) => regIsCurrent(t) || t.id === p?.run_by_trustee_id)
     .sort((a, b) => fullName(a).localeCompare(fullName(b)));
   $("#project-trustee").innerHTML = `<option value="">— none —</option>` +
-    trustees.map((t) => `<option value="${t.id}" ${p?.run_by_trustee_id === t.id ? "selected" : ""}>${esc(fullName(t))}</option>`).join("");
+    trustees.map((t) => `<option value="${t.id}" ${p?.run_by_trustee_id === t.id ? "selected" : ""}>${esc(fullName(t))}${t.is_helper ? HELPER_TEXT : ""}</option>`).join("");
 
   const selUnits = p ? projUnitIds(p.id) : [];
   const selAreas = p ? projAreaIds(p.id) : [];
@@ -2769,9 +2777,10 @@ const REGISTRIES = {
       { key: "unit_id", label: "Lives in unit", type: "unit" },
       { key: "service_start", label: "Service start date", type: "date", required: true },
       { key: "service_end", label: END_LABEL, type: "date" },
+      { key: "is_helper", label: "Helper trustee (full trustee access; shown with a 🤝 Helper badge)", type: "checkbox" },
     ],
     columns: [
-      ["Name", (r) => `<strong>${esc(fullName(r))}</strong>`],
+      ["Name", (r) => `<strong>${esc(fullName(r))}</strong>${r.is_helper ? helperBadge() : ""}`],
       ["Unit", (r) => (r.unit_id ? unitLinkChip(r.unit_id) : "—")],
       ["Cell", (r) => telLink(r.cell)],
     ],
@@ -2857,6 +2866,8 @@ function regFieldHtml(f, rec) {
   if (f.type === "select") {
     input = `<select id="${id}">${f.options.map(([val, label]) =>
       `<option value="${val}" ${String(v) === val ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`;
+  } else if (f.type === "checkbox") {
+    return `<label class="check" data-reg-field="${f.key}"><input id="${id}" type="checkbox" ${v === true ? "checked" : ""} /> ${esc(f.label)}</label>`;
   } else if (f.type === "unit") {
     input = `<select id="${id}"><option value="">— none —</option>${state.units.map((u) =>
       `<option value="${u.id}" ${v === u.id ? "selected" : ""}>Unit ${esc(u.number)}</option>`).join("")}</select>`;
@@ -2869,7 +2880,10 @@ function regFieldHtml(f, rec) {
 function regValues() {
   const cfg = REGISTRIES[regCtx.key];
   const out = {};
-  cfg.fields.forEach((f) => { const el = $("#reg-f-" + f.key); out[f.key] = el ? el.value.trim() : ""; });
+  cfg.fields.forEach((f) => {
+    const el = $("#reg-f-" + f.key);
+    out[f.key] = !el ? "" : f.type === "checkbox" ? (el.checked ? "true" : "") : el.value.trim();
+  });
   return out;
 }
 const regFieldVisible = (f, vals) => (f.showIf ? f.showIf(vals) : true);
@@ -2917,7 +2931,8 @@ $("#reg-form").addEventListener("submit", async (e) => {
       setMsg("reg-msg", "⚠️ Please enter a valid email address.", false);
       return;
     }
-    payload[f.key] = visible && val !== "" ? val : null;   // hidden fields are cleared
+    payload[f.key] = f.type === "checkbox" ? val === "true"
+      : visible && val !== "" ? val : null;   // hidden fields are cleared
   }
   if (payload.service_end && payload.service_start && payload.service_end < payload.service_start) {
     setMsg("reg-msg", "⚠️ The service end date cannot be before the start date.", false);
@@ -3569,7 +3584,7 @@ function renderPeople() {
       ? units.map((id) => unitLinkChip(id)).join(" ")
       : `<span class="muted tiny">${["gardener", "service_provider"].includes(p.role) ? "not unit-linked" : "—"}</span>`;
     return `<tr>
-      <td>${esc(realName(p) || "—")}${p.id === me.id ? ' <span class="muted tiny">(you)</span>' : ""}<div class="muted tiny">${esc(p.email)}</div></td>
+      <td>${esc(realName(p) || "—")}${isHelperUser(p.id) ? helperBadge() : ""}${p.id === me.id ? ' <span class="muted tiny">(you)</span>' : ""}<div class="muted tiny">${esc(p.email)}</div></td>
       <td><span class="role-chip ${p.role}">${esc(ROLE_LABEL[p.role] || p.role)}</span></td>
       <td>${recCell}</td>
       <td>${unitCell}</td>
@@ -3635,7 +3650,7 @@ function renderActivity() {
   const users = state.profiles.slice().sort((a, b) =>
     String(a.full_name || a.email).localeCompare(String(b.full_name || b.email)));
   const userOpts = `<option value="">All users</option>` + users.map((p) =>
-    `<option value="${p.id}" ${f.user === p.id ? "selected" : ""}>${esc(p.full_name || p.email)}${realName(p) ? " · " + esc(p.email) : ""}${p.deactivated_at ? " (deactivated)" : ""}</option>`).join("");
+    `<option value="${p.id}" ${f.user === p.id ? "selected" : ""}>${esc(p.full_name || p.email)}${isHelperUser(p.id) ? HELPER_TEXT : ""}${realName(p) ? " · " + esc(p.email) : ""}${p.deactivated_at ? " (deactivated)" : ""}</option>`).join("");
 
   $("#main").innerHTML = `
     <div class="panel">
@@ -3716,7 +3731,7 @@ function fillUserLinkRecords() {
   $("#userlink-record").innerHTML = `<option value="">— choose the ${esc(reg.noun)} —</option>` +
     recs.map((r) => {
       const hint = recordHint(role, r);
-      return `<option value="${r.id}" ${current && current.id === r.id ? "selected" : ""}>${esc(recordLabel(role, r))}${hint ? " · " + esc(hint) : ""}</option>`;
+      return `<option value="${r.id}" ${current && current.id === r.id ? "selected" : ""}>${esc(recordLabel(role, r))}${role === "trustee" && r.is_helper ? HELPER_TEXT : ""}${hint ? " · " + esc(hint) : ""}</option>`;
     }).join("");
   $("#userlink-none").hidden = recs.length > 0;
   $("#userlink-none-text").textContent =
@@ -3799,7 +3814,7 @@ function fillAddUserRecords() {
   $("#adduser-record").innerHTML = `<option value="">— choose the ${esc(reg.noun)} —</option>` +
     recs.map((r) => {
       const hint = recordHint(role, r);
-      return `<option value="${r.id}">${esc(recordLabel(role, r))}${hint ? " · " + esc(hint) : ""}</option>`;
+      return `<option value="${r.id}">${esc(recordLabel(role, r))}${role === "trustee" && r.is_helper ? HELPER_TEXT : ""}${hint ? " · " + esc(hint) : ""}</option>`;
     }).join("");
   $("#adduser-none").hidden = recs.length > 0;
   $("#adduser-none-text").textContent =
@@ -4003,7 +4018,7 @@ async function openTicket(id) {
     <p class="ticket-desc">${esc(t.description) || "<em>No description.</em>"}</p>
     <div class="ticket-meta">Logged by ${esc(loggerName(t))}${t.logged_by_role ? " (" + esc(ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""} · ${esc(fmtDateTimeFull(t.created_at))}</div>
     <div class="ticket-meta">Assigned to Role: <strong>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "— (not sent yet)"}</strong>
-      · Assigned user: <strong>${t.assigned_user_id ? (t.assigned_user_id === me.id ? "You" : esc(t.assigned_user_name || "—")) : "Nobody yet"}</strong></div>
+      · Assigned user: <strong>${t.assigned_user_id ? (t.assigned_user_id === me.id ? "You" : esc(t.assigned_user_name || "—")) : "Nobody yet"}</strong>${isHelperUser(t.assigned_user_id) ? helperBadge() : ""}</div>
 
     ${photos.length ? `<div class="photo-grid">${photos.map((p) =>
       `<figure class="photo-item"><a href="${publicUrl(p.storage_path)}" target="_blank" rel="noopener">
@@ -4104,7 +4119,7 @@ async function fillAssignUsers(t) {
   const people = data || [];
   if (t.assigned_user_id && !people.some((p) => p.id === t.assigned_user_id)) people.push({ id: t.assigned_user_id, name: t.assigned_user_name || "(current)" });
   sel.innerHTML = `<option value="">— nobody —</option>` + people.map((p) =>
-    `<option value="${p.id}" ${p.id === t.assigned_user_id ? "selected" : ""}>${esc(p.name)}${p.id === me.id ? " (you)" : ""}</option>`).join("");
+    `<option value="${p.id}" ${p.id === t.assigned_user_id ? "selected" : ""}>${esc(p.name)}${isHelperUser(p.id) ? HELPER_TEXT : ""}${p.id === me.id ? " (you)" : ""}</option>`).join("");
   if (!people.length) setMsg("assign-msg", `Nobody with a login is in the ${ROLE_LABEL[t.assigned_role] || t.assigned_role} role for this ticket yet.`, true);
 }
 
@@ -4174,7 +4189,7 @@ async function renderFeedbackThread(ticketId) {
     const imgs = (photosByFb[f.id] || []).map((p) =>
       `<a href="${publicUrl(p.storage_path)}" target="_blank" rel="noopener"><img src="${publicUrl(p.storage_path)}" class="fb-img" loading="lazy" /></a>`).join("");
     return `<div class="fb-item">
-      <div class="fb-head"><strong>${esc(who)}</strong>${role ? ` <span class="muted tiny">· ${esc(role)}</span>` : ""}
+      <div class="fb-head"><strong>${esc(who)}</strong>${isHelperUser(f.author_id) ? helperBadge() : ""}${role ? ` <span class="muted tiny">· ${esc(role)}</span>` : ""}
         <span class="tl-time">${fmtDate(f.created_at)}</span></div>
       <div class="fb-body">${esc(f.body)}</div>
       ${imgs ? `<div class="fb-imgs">${imgs}</div>` : ""}

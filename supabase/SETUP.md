@@ -169,6 +169,10 @@ in the SQL Editor the same way:
   tickets they have a stake in, and (trustees) new sign-ins / AI questions since
   they last opened those screens.
 
+- **`40_helper_trustees.sql`** — "Helper trustee" flag on Trustee registry records
+  (`trustees.is_helper`). Helpers are full trustees; the app shows a 🤝 Helper badge.
+  Run this before editing a trustee after the update.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons
