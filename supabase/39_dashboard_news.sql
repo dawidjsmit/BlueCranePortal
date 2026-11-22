@@ -5,7 +5,8 @@
 --    * tickets that newly ARRIVED in their Needs my Feedback (moved to their
 --      role, or came back to Sent/Busy/Waiting) and that they haven't opened;
 --    * NEW COMMENTS by others on tickets they have a stake in (tickets they
---      logged; trustees: every ticket) that they haven't opened since;
+--      logged or are the assigned user of; trustees: every ticket) that they
+--      haven't opened since;
 --    * trustees: new sign-ins on User activity and new AI questions since
 --      they last opened those screens.
 --  Opening a ticket marks it as seen. Your own actions never count as new.
@@ -87,7 +88,7 @@ begin
         where f.author_id is distinct from auth.uid()
           and f.created_at > greatest(b, coalesce(s.seen_at, b))
           and t.status <> 'create'
-          and (trustee or t.logged_by = auth.uid())
+          and (trustee or t.logged_by = auth.uid() or t.assigned_user_id = auth.uid())
         group by f.ticket_id) x), '[]'::json));
 end;
 $$;

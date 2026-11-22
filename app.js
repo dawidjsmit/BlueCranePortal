@@ -692,8 +692,8 @@ function renderDashboard() {
     <div id="dash-tickets"></div>
     <div class="stats-grid">
       ${dashCard(needs.length, "Needs my feedback", "waiting", 'data-view="ticket-feedback"', "Open Needs my Feedback")}
-      ${dashCard(active.length, "Active tickets", "open", 'data-dash="active"', "Sent, Busy or Waiting — opens All Tickets filtered on these")}
-      ${dashCard(parked.length, "Parked tickets", "parked", 'data-dash="parked"', "On hold — opens All Tickets filtered on Parked")}
+      ${isTrustee() ? dashCard(active.length, "Active tickets", "open", 'data-dash="active"', "Sent, Busy or Waiting — opens All Tickets filtered on these")
+        + dashCard(parked.length, "Parked tickets", "parked", 'data-dash="parked"', "On hold — opens All Tickets filtered on Parked") : ""}
       ${dashCard(myDrafts.length, "My drafts", "progress", 'data-dash="drafts"', "Saved but not sent — opens My Tickets filtered on drafts")}
       ${isTrustee() ? dashCard('<span id="dash-act-n">…</span>', "New sign-ins", "activity", 'data-view="activity"', "Sign-ins by others since you last opened User activity")
         + dashCard('<span id="dash-ai-n">…</span>', "New AI questions", "ai", 'data-view="aiengagement"', "Questions to Ask the Rules since you last opened AI engagement") : ""}
@@ -756,7 +756,7 @@ function renderDashTicketNews() {
       <div class="panel-head"><h2>🎟️ What's new on tickets</h2></div>
       ${arrivals.length ? `<h4 class="news-h">🆕 New in Needs my Feedback (${arrivals.length})</h4>
         ${arrivals.slice(0, CAP).map((t) => line(t, statusPill(t.status))).join("")}${more(arrivals.length, "ticket-feedback")}` : ""}
-      ${comments.length ? `<h4 class="news-h">💬 New comments on ${comments.length} ticket${comments.length === 1 ? "" : "s"}${isTrustee() ? "" : " you logged"}</h4>
+      ${comments.length ? `<h4 class="news-h">💬 New comments on ${comments.length} ticket${comments.length === 1 ? "" : "s"}${isTrustee() ? "" : " you logged or are assigned to"}</h4>
         ${comments.slice(0, CAP).map((c) => line(c.t, `<span class="new-comments">${c.n} new</span>`)).join("")}${more(comments.length, isTrustee() ? "ticket-all" : "ticket-mine")}` : ""}
       <p class="muted tiny" style="margin:8px 0 0">Opening a ticket clears it from this list.</p>
     </div>`;
@@ -919,7 +919,7 @@ function ticketRow(t, showLogger = true) {
   return `<tr class="clickable-row">
     <td ${open} style="white-space:nowrap">${fmtDay(t.created_at)}</td>
     <td ${open}><strong>${esc(t.heading)}</strong></td>
-    <td ${open}>${esc(ticketTargetLabel(t))}</td>
+    <td ${open}>${ticketRelatesCell(t)}</td>
     <td ${open}>${esc(ticketTypeName(t.type_id))}</td>
     <td ${open}>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}${t.assigned_user_name ? `<div class="muted tiny">👤 ${esc(t.assigned_user_name)}</div>` : ""}</td>
     ${showLogger ? `<td ${open}>${esc(loggerName(t))}</td>` : ""}
@@ -929,11 +929,22 @@ function ticketRow(t, showLogger = true) {
   </tr>`;
 }
 
+// "Relates to" in the ticket grids: General, Unit or Communal Entity, with the
+// specific unit / entity in small text underneath.
+function ticketRelatesCell(t) {
+  if (t.unit_id) return `Unit<div class="muted tiny">${esc(unitChoiceLabel(state.units.find((u) => u.id === t.unit_id) || { number: "?" }))}</div>`;
+  if (t.communal_area_id) {
+    const a = state.areas.find((x) => x.id === t.communal_area_id);
+    return `Communal Entity<div class="muted tiny">${esc(a ? areaFullLabel(a) : "—")}</div>`;
+  }
+  return "General";
+}
+
 // The ticket grid used on All Tickets, My Tickets and Needs my Feedback.
 function ticketGrid(list, { showLogger = true, empty = "No tickets match." } = {}) {
   const cols = showLogger ? 8 : 7;
   return `<div class="table-wrap"><table class="ticket-grid"><thead><tr>
-      <th>Logged</th><th>Heading</th><th>Unit / entity</th><th>Type</th><th>Assigned to Role</th>${showLogger ? "<th>Logged by</th>" : ""}<th>Status</th><th></th>
+      <th>Logged</th><th>Heading</th><th>Relates to</th><th>Type</th><th>Assigned to Role</th>${showLogger ? "<th>Logged by</th>" : ""}<th>Status</th><th></th>
     </tr></thead><tbody>
       ${list.length ? list.map((t) => ticketRow(t, showLogger)).join("") : `<tr><td colspan="${cols}" class="empty">${empty}</td></tr>`}
     </tbody></table></div>`;
