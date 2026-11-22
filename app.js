@@ -943,6 +943,16 @@ function ticketRelatesCell(t) {
   return "General";
 }
 
+// Ticket view: "Unit 12", "Grouping – Type – Code – Name", or "General".
+function ticketRelatesDetail(t) {
+  if (t.unit_id) return unitChoiceLabel(state.units.find((u) => u.id === t.unit_id) || { number: "?" });
+  if (t.communal_area_id) {
+    const a = state.areas.find((x) => x.id === t.communal_area_id);
+    return a ? areaFullLabel(a) : "—";
+  }
+  return "General";
+}
+
 // The ticket grid used on All Tickets, My Tickets and Needs my Feedback.
 function ticketGrid(list, { showLogger = true, empty = "No tickets match." } = {}) {
   const cols = showLogger ? 8 : 7;
@@ -1936,7 +1946,7 @@ function projectName(id) {
 // Helper trustees: full trustees, shown with a 🤝 Helper badge.
 function isHelperUser(profileId) { return !!profileId && state.helperIds.has(profileId); }
 function helperBadge() { return ` <span class="helper-badge" title="Helper trustee — full trustee access">🤝 Helper</span>`; }
-const HELPER_TEXT = " 🤝 Helper";   // for dropdown options (plain text only)
+const HELPER_TEXT = " 🤝";   // for dropdown options (plain text only; the icon is enough)
 
 function trusteeName(id) {
   const t = state.registry.trustees.find((x) => x.id === id);
@@ -4012,7 +4022,7 @@ async function openTicket(id) {
     <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span>
     ${statusDesc(t.status) ? `<p class="status-hint">ℹ️ ${esc(statusDesc(t.status))}</p>` : ""}
     <dl class="detail-grid">
-      <dt>${t.communal_area_id ? "Communal entity" : t.unit_id ? "Unit" : "Relates to"}</dt><dd>${esc(ticketTargetLabel(t))}</dd>
+      <dt>${t.unit_id ? "Relates to a Unit:" : t.communal_area_id ? "Relates to a Communal Entity:" : "Relates to:"}</dt><dd>${esc(ticketRelatesDetail(t))}</dd>
       ${isTrustee() && t.project_id ? `<dt>Project</dt><dd>${esc(projectName(t.project_id) || "—")}</dd>` : ""}
     </dl>
     <p class="ticket-desc">${esc(t.description) || "<em>No description.</em>"}</p>
@@ -4132,8 +4142,8 @@ async function assignTicketUser(ticketId, userId, btn) {
     setMsg("assign-msg", "\u26a0\ufe0f " + (/assign_ticket_user/.test(error.message) ? "Run supabase/37_ticket_assigned_user.sql first." : error.message), false);
     return;
   }
+  closeOverlays();   // done — close the ticket window
   await loadData();
-  openTicket(ticketId);
   refreshActiveView();
 }
 
