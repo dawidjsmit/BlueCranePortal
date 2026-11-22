@@ -737,22 +737,44 @@ function renderTicketCreate() {
   openTicketModal(null);
 }
 
-// "My Tickets" — tickets I literally created (drafts first).
+// "My Tickets" — tickets I created, latest first, with status quick filters and search.
+let myTicketsStatus = "";
+let myTicketsSearch = "";
 function renderMyTickets() {
-  const mine = state.tickets
-    .filter((t) => t.logged_by === me.id)
-    .sort((a, b) => (a.status === "create" ? -1 : 0) - (b.status === "create" ? -1 : 0));
-  const drafts = mine.filter((t) => t.status === "create");
-  const sent = mine.filter((t) => t.status !== "create");
+  const mine = state.tickets.filter((t) => t.logged_by === me.id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const count = (s) => mine.filter((t) => t.status === s).length;
+  const chip = (value, label, n, tip) =>
+    `<button type="button" class="qf-chip${myTicketsStatus === value ? " active" : ""}" data-my-status="${value}"${tip ? ` title="${esc(tip)}"` : ""}>${label} <span class="qf-n">${n}</span></button>`;
+  const chips = [chip("", "All", mine.length)]
+    .concat(TICKET_STATUS_ORDER.filter((s) => count(s) || s === "create").map((s) =>
+      chip(s, s === "create" ? "📝 Draft (Create)" : esc(TICKET_STATUS_LABEL[s]), count(s),
+        s === "create" ? "Drafts: saved but not yet sent. Open one and click ➤ to send it." : statusDesc(s))));
+
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>🎟️ My Tickets</h2>
-        ${canCreateTicket() ? `<button class="btn primary small" data-new-ticket>+ Log a ticket</button>` : ""}
-      </div>
-      <p class="muted tiny">Tickets you created.</p>
-    </div>
-    ${drafts.length ? ticketListPanel("📝 Drafts (not yet sent)", drafts) : ""}
-    ${ticketListPanel("Submitted", sent, "", "You haven't submitted any tickets yet.")}`;
+      <div class="panel-head"><h2>🎟️ My Tickets</h2></div>
+      <p class="muted tiny">Every ticket you logged, latest first. <strong>Create</strong> means it's still a <strong>draft</strong>: saved, but nobody else can see it until you send it.</p>
+      <div class="qf-row">${chips.join("")}</div>
+      <div class="filters"><input type="search" id="my-ticket-search" placeholder="🔍 Search heading, description, unit, entity, type…" value="${esc(myTicketsSearch)}" /></div>
+      <div id="my-ticket-list"></div>
+    </div>`;
+  renderMyTicketList(mine);
+  $("#my-ticket-search").addEventListener("input", (e) => { myTicketsSearch = e.target.value; renderMyTicketList(mine); });
+}
+
+function ticketMatches(t, q) {
+  if (!q) return true;
+  const hay = [t.heading, t.description, ticketTargetLabel(t), ticketTypeName(t.type_id),
+    TICKET_STATUS_LABEL[t.status], t.assigned_user_name, ROLE_LABEL[t.assigned_role]].join(" ").toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
+}
+
+function renderMyTicketList(mine) {
+  const list = mine.filter((t) => (!myTicketsStatus || t.status === myTicketsStatus) && ticketMatches(t, myTicketsSearch.trim()));
+  $("#my-ticket-list").innerHTML =
+    (myTicketsStatus || myTicketsSearch.trim() ? `<p class="muted tiny">Showing ${list.length} of ${mine.length}</p>` : "") +
+    ticketGrid(list, { showLogger: false, empty: mine.length ? "No tickets match." : "You haven't logged any tickets yet." });
 }
 
 // "My Unit's Tickets" — tickets on a chosen unit I'm linked to.
@@ -792,13 +814,13 @@ function renderUnitTickets() {
 // "Needs my Feedback" — tickets assigned to a role I hold.
 function renderNeedsFeedback() {
   const mine = state.tickets.filter(needsMyAction)
-    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   $("#main").innerHTML = `
     <div class="panel">
-      <div class="panel-head"><h2>⏳ Needs my Feedback</h2>
-        <span class="hint">Tickets currently assigned to a role you hold</span></div>
-    </div>
-    ${ticketListPanel("Awaiting your feedback", mine, "", "🎉 Nothing waiting on you right now.")}`;
+      <div class="panel-head"><h2>⏳ Needs my Feedback</h2></div>
+      <p class="muted tiny">Tickets assigned to a role you hold${isTrustee() ? " (Trustee)" : ""}, waiting for you to respond or act. A ticket leaves this list once it is reassigned to another role, completed or cancelled.</p>
+      ${ticketGrid(mine, { empty: "🎉 Nothing waiting on you right now." })}
+    </div>`;
 }
 
 // "All Tickets" — trustee complex-wide view, with a status filter.
@@ -814,11 +836,7 @@ function renderAllTickets() {
         <button class="btn primary small" data-new-ticket>+ Log a ticket</button></div>
       <div class="filters"><label>Status <select id="all-ticket-status">${statusOpts}</select></label>
         ${allTicketsStatus && statusDesc(allTicketsStatus) ? `<span class="muted tiny">${esc(statusDesc(allTicketsStatus))}</span>` : ""}</div>
-      <div class="table-wrap"><table class="ticket-grid"><thead><tr>
-        <th>Logged</th><th>Heading</th><th>Unit / entity</th><th>Type</th><th>Assigned to</th><th>Logged by</th><th>Status</th><th></th>
-      </tr></thead><tbody>
-        ${list.length ? list.map(ticketRow).join("") : `<tr><td colspan="8" class="empty">No tickets match.</td></tr>`}
-      </tbody></table></div>
+      ${ticketGrid(list)}
     </div>`;
   const sel = $("#all-ticket-status");
   if (sel) sel.addEventListener("change", (e) => { allTicketsStatus = e.target.value; renderAllTickets(); });
@@ -826,7 +844,7 @@ function renderAllTickets() {
 
 // One row of the All Tickets grid. Clicking the row opens the ticket;
 // the 🗑️ button (trustees only) deletes it after an in-app confirmation.
-function ticketRow(t) {
+function ticketRow(t, showLogger = true) {
   const open = `data-open-ticket="${t.id}"`;
   return `<tr class="clickable-row">
     <td ${open} style="white-space:nowrap">${fmtDay(t.created_at)}</td>
@@ -834,11 +852,21 @@ function ticketRow(t) {
     <td ${open}>${esc(ticketTargetLabel(t))}</td>
     <td ${open}>${esc(ticketTypeName(t.type_id))}</td>
     <td ${open}>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}${t.assigned_user_name ? `<div class="muted tiny">👤 ${esc(t.assigned_user_name)}</div>` : ""}</td>
-    <td ${open}>${esc(loggerName(t))}</td>
+    ${showLogger ? `<td ${open}>${esc(loggerName(t))}</td>` : ""}
     <td ${open}>${statusPill(t.status)}</td>
     <td style="text-align:right">${isTrustee()
       ? `<button class="icon-btn" data-del-ticket-row="${t.id}" title="Delete ticket" aria-label="Delete ticket">🗑️</button>` : ""}</td>
   </tr>`;
+}
+
+// The ticket grid used on All Tickets, My Tickets and Needs my Feedback.
+function ticketGrid(list, { showLogger = true, empty = "No tickets match." } = {}) {
+  const cols = showLogger ? 8 : 7;
+  return `<div class="table-wrap"><table class="ticket-grid"><thead><tr>
+      <th>Logged</th><th>Heading</th><th>Unit / entity</th><th>Type</th><th>Assigned to Role</th>${showLogger ? "<th>Logged by</th>" : ""}<th>Status</th><th></th>
+    </tr></thead><tbody>
+      ${list.length ? list.map((t) => ticketRow(t, showLogger)).join("") : `<tr><td colspan="${cols}" class="empty">${empty}</td></tr>`}
+    </tbody></table></div>`;
 }
 
 function renderUnits() {
@@ -3839,7 +3867,7 @@ function ticketTargetLabel(t) {
   return "General";
 }
 function ticketCard(t) {
-  const assigned = t.assigned_role ? `· to <strong>${ROLE_LABEL[t.assigned_role] || t.assigned_role}</strong>${t.assigned_user_name ? ` (${esc(t.assigned_user_name)})` : ""}` : "";
+  const assigned = t.assigned_role ? `· Assigned to Role: <strong>${ROLE_LABEL[t.assigned_role] || t.assigned_role}</strong>${t.assigned_user_name ? ` (${esc(t.assigned_user_name)})` : ""}` : "";
   return `<div class="request-card" data-open-ticket="${t.id}">
     <div class="rc-top">
       <div><div class="rc-title">${esc(t.heading)}</div>
@@ -3889,13 +3917,12 @@ async function openTicket(id) {
     ${statusDesc(t.status) ? `<p class="status-hint">ℹ️ ${esc(statusDesc(t.status))}</p>` : ""}
     <dl class="detail-grid">
       <dt>${t.communal_area_id ? "Communal entity" : t.unit_id ? "Unit" : "Relates to"}</dt><dd>${esc(ticketTargetLabel(t))}</dd>
-      <dt>Logged by</dt><dd>${esc(loggerName(t))}${t.logged_by_role ? " (" + (ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""}</dd>
-      <dt>Logged</dt><dd>${fmtDate(t.created_at)}</dd>
-      <dt>Assigned to</dt><dd>${t.assigned_role ? (ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}</dd>
-      <dt>Assigned user</dt><dd>${t.assigned_user_id ? (t.assigned_user_id === me.id ? "You" : esc(t.assigned_user_name || "—")) : '<span class="muted">Nobody yet</span>'}</dd>
       ${isTrustee() && t.project_id ? `<dt>Project</dt><dd>${esc(projectName(t.project_id) || "—")}</dd>` : ""}
     </dl>
-    <p>${esc(t.description) || "<em>No description.</em>"}</p>
+    <p class="ticket-desc">${esc(t.description) || "<em>No description.</em>"}</p>
+    <div class="ticket-meta">Logged by ${esc(loggerName(t))}${t.logged_by_role ? " (" + esc(ROLE_LABEL[t.logged_by_role] || t.logged_by_role) + ")" : ""} · ${esc(fmtDateTimeFull(t.created_at))}</div>
+    <div class="ticket-meta">Assigned to Role: <strong>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "— (not sent yet)"}</strong>
+      · Assigned user: <strong>${t.assigned_user_id ? (t.assigned_user_id === me.id ? "You" : esc(t.assigned_user_name || "—")) : "Nobody yet"}</strong></div>
 
     ${photos.length ? `<div class="photo-grid">${photos.map((p) =>
       `<figure class="photo-item"><a href="${publicUrl(p.storage_path)}" target="_blank" rel="noopener">
@@ -3907,8 +3934,8 @@ async function openTicket(id) {
       ${loggerCanEdit ? `
         <label class="icon-btn ticket-act upload-label" title="Add a photo" aria-label="Add a photo">📷<input type="file" accept="image/*" id="ticket-photo-input" hidden /></label>
         <button class="icon-btn ticket-act" data-edit-ticket="${t.id}" title="Edit" aria-label="Edit">✏️</button>
-        <button class="icon-btn ticket-act ticket-send" data-submit-ticket="${t.id}" title="Submit &amp; send" aria-label="Submit &amp; send">📤</button>
-        <button class="icon-btn ticket-act" data-delete-ticket="${t.id}" title="Delete" aria-label="Delete">🗑️</button>` : ""}
+        <button class="icon-btn ticket-act" data-delete-ticket="${t.id}" title="Delete" aria-label="Delete">🗑️</button>
+        <button class="ticket-send-btn" data-submit-ticket="${t.id}" title="Submit &amp; send to the trustees" aria-label="Submit &amp; send to the trustees">➤</button>` : ""}
       ${isTrustee() && !isDraft ? `<button class="icon-btn ticket-act" data-edit-ticket="${t.id}" title="Edit details" aria-label="Edit details">✏️</button>` : ""}
       ${trusteeStatusBtns}
     </div>
@@ -4081,10 +4108,11 @@ function loggerName(t) {
 }
 
 async function submitTicket(id) {
-  // Create -> Sent, assigned to Trustees.
-  await sb.from("tickets").update({ status: "sent", assigned_role: "trustee" }).eq("id", id);
+  // Create -> Sent, assigned to Trustees. Then close the ticket window.
+  const { error } = await sb.from("tickets").update({ status: "sent", assigned_role: "trustee" }).eq("id", id);
+  if (error) { setMsg("ticket-photo-msg", "\u26a0\ufe0f " + error.message, false); return; }
+  closeOverlays();
   await loadData();
-  openTicket(id);
   refreshActiveView();
 }
 
@@ -4423,6 +4451,8 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editTicket) openTicketModal(state.tickets.find((x) => x.id === t.dataset.editTicket));
   if (t.dataset.submitTicket) submitTicket(t.dataset.submitTicket);
   if (t.dataset.deleteTicket) deleteTicket(t.dataset.deleteTicket);
+  const qf = t.closest("[data-my-status]");
+  if (qf) { myTicketsStatus = qf.dataset.myStatus; renderMyTickets(); }
   const delRow = t.closest("[data-del-ticket-row]");
   if (delRow) deleteTicket(delRow.dataset.delTicketRow);
   if (t.dataset.ticketStatus) {
@@ -4524,6 +4554,56 @@ document.addEventListener("change", (e) => {
 });
 $$(".modal-overlay").forEach((ov) =>
   ov.addEventListener("click", (e) => { if (e.target === ov) ov.classList.remove("active"); }));
+
+/* ---------- Tooltips (mouse hover, keyboard focus, and long-press on touch) ----------
+   Any button/label with a title gets a styled tooltip. On a tablet or phone,
+   press and hold to see it; a long press shows the tip and does NOT click. */
+const TIP_SEL = "button[title], label[title], .icon-btn[title], .qf-chip[title], .late-badge[title], .new-badge[title]";
+let tipEl = null, tipTimer = null, tipSuppressClick = false, tipHideTimer = null;
+function tipTarget(el) {
+  const t = el && el.closest ? el.closest(TIP_SEL + ", [data-tip]") : null;
+  if (t && t.hasAttribute("title")) { t.dataset.tip = t.getAttribute("title"); t.removeAttribute("title"); }
+  return t && t.dataset.tip ? t : null;
+}
+function showTip(t) {
+  if (!tipEl) { tipEl = document.createElement("div"); tipEl.className = "tip-bubble"; document.body.appendChild(tipEl); }
+  tipEl.textContent = t.dataset.tip;
+  tipEl.style.display = "block";
+  const r = t.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+  let x = r.left + r.width / 2 - w / 2;
+  x = Math.max(6, Math.min(x, window.innerWidth - w - 6));
+  let y = r.top - h - 8;
+  if (y < 6) y = r.bottom + 8;
+  tipEl.style.left = x + "px"; tipEl.style.top = y + "px";
+}
+function hideTip() { if (tipEl) tipEl.style.display = "none"; }
+document.addEventListener("pointerover", (e) => {
+  if (e.pointerType !== "mouse") return;
+  const t = tipTarget(e.target); if (t) showTip(t);
+});
+document.addEventListener("pointerout", (e) => { if (e.pointerType === "mouse") hideTip(); });
+document.addEventListener("focusin", (e) => { const t = tipTarget(e.target); if (t && t.matches(":focus-visible")) showTip(t); });
+document.addEventListener("focusout", hideTip);
+document.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "mouse") return;
+  const t = tipTarget(e.target);
+  clearTimeout(tipTimer);
+  if (!t) return;
+  tipTimer = setTimeout(() => {
+    tipSuppressClick = true;
+    showTip(t);
+    clearTimeout(tipHideTimer);
+    tipHideTimer = setTimeout(hideTip, 2500);
+  }, 450);
+});
+["pointerup", "pointercancel", "pointermove"].forEach((ev) =>
+  document.addEventListener(ev, (e) => { if (ev !== "pointermove" || Math.abs(e.movementX) + Math.abs(e.movementY) > 6) clearTimeout(tipTimer); }));
+// A long press shows the tip only — swallow the click that follows.
+document.addEventListener("click", (e) => {
+  if (tipSuppressClick) { tipSuppressClick = false; e.preventDefault(); e.stopPropagation(); }
+}, true);
+document.addEventListener("contextmenu", (e) => { if (tipTarget(e.target)) e.preventDefault(); });
+document.addEventListener("scroll", hideTip, true);
 
 function closeOverlays() { $$(".modal-overlay").forEach((o) => o.classList.remove("active")); }
 function refreshActiveView() {

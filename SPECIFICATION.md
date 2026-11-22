@@ -64,6 +64,15 @@ then the history newest first. Posting as the holder marks the ticket Busy
 (RPC `mark_ticket_busy`) only from Sent or Waiting; Parked stays Parked. Trustees
 reopen a Parked / Complete / Cancelled ticket with ▶️ Mark Busy. "This ticket relates to" is picked with icon tiles.
 
+**Ticket lists:** All Tickets, My Tickets and Needs my Feedback use the same grid
+(Logged, Heading, Unit / entity, Type, Assigned to Role, Logged by, Status), each in
+one panel. My Tickets: latest first, status quick filters (Create shown as
+"Draft"), and text search. **Ticket view:** heading, status + type, status hint,
+relates-to, description, then small lines for Logged by / date and Assigned to
+Role / Assigned user. Draft actions: 📷 ✏️ 🗑️ and a green ➤ (Submit & send,
+which closes the window). Buttons with a title show a tooltip on hover, focus,
+or long-press on touch screens.
+
 **Assigned user** (migration 37): optional `tickets.assigned_user_id` / `assigned_user_name`
 next to `assigned_role` (which still drives visibility and handling). Cleared
 whenever the role changes (trigger). Someone holding the role can assign it to
