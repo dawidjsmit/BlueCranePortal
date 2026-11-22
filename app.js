@@ -693,14 +693,18 @@ function renderDashboard() {
   $("#main").innerHTML = `
     <div id="dash-garden"></div>
     <div id="dash-tickets"></div>
-    <div class="stats-grid">
+    <div class="stats-grid stats-pair">
       ${dashCard(needs.length, "Needs my feedback", "waiting", 'data-view="ticket-feedback"', "Open Needs my Feedback")}
-      ${isTrustee() ? dashCard(active.length, "Active tickets", "open", 'data-dash="active"', "Sent, Busy or Waiting — opens All Tickets filtered on these")
-        + dashCard(parked.length, "Parked tickets", "parked", 'data-dash="parked"', "On hold — opens All Tickets filtered on Parked") : ""}
       ${dashCard(myDrafts.length, "My drafts", "progress", 'data-dash="drafts"', "Saved but not sent — opens My Tickets filtered on drafts")}
-      ${isTrustee() ? dashCard('<span id="dash-act-n">…</span>', "New sign-ins", "activity", 'data-view="activity"', "Sign-ins by others since you last opened User activity")
-        + dashCard('<span id="dash-ai-n">…</span>', "New AI questions", "ai", 'data-view="aiengagement"', "Questions to Ask the Rules since you last opened AI engagement") : ""}
-    </div>`;
+    </div>
+    ${isTrustee() ? `<div class="stats-grid stats-pair">
+      ${dashCard(active.length, "Active tickets", "open", 'data-dash="active"', "Sent, Busy or Waiting — opens All Tickets filtered on these")}
+      ${dashCard(parked.length, "Parked tickets", "parked", 'data-dash="parked"', "On hold — opens All Tickets filtered on Parked")}
+    </div>
+    <div class="stats-grid stats-pair">
+      ${dashCard('<span id="dash-act-n">…</span>', "New sign-ins", "activity", 'data-view="activity"', "Sign-ins by others since you last opened User activity")}
+      ${dashCard('<span id="dash-ai-n">…</span>', "New AI questions", "ai", 'data-view="aiengagement"', "Questions to Ask the Rules since you last opened AI engagement")}
+    </div>` : ""}`;
   if (isTrustee() || me.role === "gardener") dashGardenNews();
   dashTicketNews();
   if (isTrustee()) dashScreenNews();
