@@ -327,6 +327,8 @@ Ticket types, Users.
 
 ## 9. Possible future enhancements
 
+The full, current list is kept in [`BACKLOG.md`](BACKLOG.md).
+
 - WhatsApp / email quick-reply links per contact.
 - Email/push notifications on ticket status changes.
 - Due dates & overdue flags on tickets.
