@@ -84,6 +84,12 @@ themselves only (or unassign themselves); a trustee can assign anybody in the ro
 (`ticket_role_users`) at any time. Only via RPC `assign_ticket_user`, which adds a
 👤 note to the history.
 
+**Reassign / assign rules** (migration 38): only a trustee or the ticket's assigned
+user (still in the role) can reassign it to another role, and only while Sent, Busy
+or Waiting. Tickets without a unit can't go to Owner, Tenant or Occupant.
+Assigning a user is blocked on Complete and Cancelled tickets. Anyone in the role
+may still take a ticket for themselves, also from someone else.
+
 **Ticket status changes (trustees):** Parked → Busy or Cancelled; Cancelled → Busy;
 Complete → Busy; otherwise → Complete, Cancelled or Parked.
 

@@ -160,6 +160,10 @@ in the SQL Editor the same way:
   the assigned role. Cleared when the role changes; role holders can take it
   themselves; trustees can assign anybody in the role.
 
+- **`38_ticket_assign_rules.sql`** — tighter Reassign / Assign user rules: only a
+  trustee or the assigned user can reassign; no reassigning while Parked; no unit
+  roles for tickets without a unit; no assigning on Complete / Cancelled tickets.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons
