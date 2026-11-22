@@ -164,6 +164,11 @@ in the SQL Editor the same way:
   trustee or the assigned user can reassign; no reassigning while Parked; no unit
   roles for tickets without a unit; no assigning on Complete / Cancelled tickets.
 
+- **`39_dashboard_news.sql`** — Dashboard "what's new": when tickets arrive in a
+  role (`tickets.arrived_at`), which tickets each user has opened, new comments on
+  tickets they have a stake in, and (trustees) new sign-ins / AI questions since
+  they last opened those screens.
+
 ### `manage-users` Edge Function (Add user / Deactivate)
 
 The Users screen's **+ Add user**, **Deactivate** and **Reactivate** buttons

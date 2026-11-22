@@ -64,6 +64,18 @@ then the history newest first. Posting as the holder marks the ticket Busy
 (RPC `mark_ticket_busy`) only from Sent or Waiting; Parked stays Parked. Trustees
 reopen a Parked / Complete / Cancelled ticket with ▶️ Mark Busy. "This ticket relates to" is picked with icon tiles.
 
+**Dashboard** (everyone starts here; every card is clickable):
+- 🌱 What's new on the Gardening Report (trustees, gardeners; only when there is news).
+- 🎟️ What's new on tickets (only when there is news): 🆕 tickets that arrived in my
+  Needs my Feedback since I last opened them (`tickets.arrived_at` vs `ticket_seen`),
+  and 💬 tickets with new comments by others that I have a stake in (logged by me;
+  trustees: any ticket). Opening a ticket clears it (`mark_ticket_seen`).
+  Nothing before the user's baseline counts (`user_news_baseline`). RPC `ticket_news`.
+- Cards: Needs my feedback → Needs my Feedback; Active tickets (Sent/Busy/Waiting) and
+  Parked tickets → All Tickets filtered; My drafts → My Tickets filtered on Create.
+  Drafts never count as active or parked. Trustees also: New sign-ins → User activity,
+  New AI questions → AI engagement (since last opened; `screen_news`, `mark_screen_seen`).
+
 **Needs my Feedback** (also the Dashboard count): tickets with status Sent, Busy or
 Waiting, in a role the user holds, and either assigned to them or not yet assigned
 to anybody. Parked tickets and tickets taken by someone else in the role are left out.
