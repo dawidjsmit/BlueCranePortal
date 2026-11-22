@@ -926,6 +926,7 @@ function ticketRow(t, showLogger = true) {
     <td ${open}>${esc(ticketTypeName(t.type_id))}</td>
     <td ${open}>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}${t.assigned_user_name ? `<div class="muted tiny">👤 ${esc(t.assigned_user_name)}</div>` : ""}</td>
     ${showLogger ? `<td ${open}>${esc(loggerName(t))}</td>` : ""}
+    <td ${open} style="white-space:nowrap">${dueDateHtml(t, '<span class="muted">—</span>')}</td>
     <td ${open}>${statusPill(t.status)}</td>
     <td style="text-align:right">${isTrustee()
       ? `<button class="icon-btn" data-del-ticket-row="${t.id}" title="Delete ticket" aria-label="Delete ticket">🗑️</button>` : ""}</td>
@@ -953,11 +954,20 @@ function ticketRelatesDetail(t) {
   return "General";
 }
 
+// Due dates: overdue = still active (Sent, Busy, Waiting) and the due date is before today.
+function isOverdue(t) {
+  return !!t.due_date && ["sent", "busy", "waiting"].includes(t.status) && t.due_date < isoDay(new Date());
+}
+function dueDateHtml(t, emptyText = "") {
+  if (!t.due_date) return emptyText;
+  return `<span class="${isOverdue(t) ? "overdue" : ""}"${isOverdue(t) ? ' title="Overdue"' : ""}>${esc(fmtDay(t.due_date))}</span>`;
+}
+
 // The ticket grid used on All Tickets, My Tickets and Needs my Feedback.
 function ticketGrid(list, { showLogger = true, empty = "No tickets match." } = {}) {
-  const cols = showLogger ? 8 : 7;
+  const cols = showLogger ? 9 : 8;
   return `<div class="table-wrap"><table class="ticket-grid"><thead><tr>
-      <th>Logged</th><th>Heading</th><th>Relates to</th><th>Type</th><th>Assigned to Role</th>${showLogger ? "<th>Logged by</th>" : ""}<th>Status</th><th></th>
+      <th>Logged</th><th>Heading</th><th>Relates to</th><th>Type</th><th>Assigned to Role</th>${showLogger ? "<th>Logged by</th>" : ""}<th>Due Date</th><th>Status</th><th></th>
     </tr></thead><tbody>
       ${list.length ? list.map((t) => ticketRow(t, showLogger)).join("") : `<tr><td colspan="${cols}" class="empty">${empty}</td></tr>`}
     </tbody></table></div>`;
@@ -4018,8 +4028,10 @@ async function openTicket(id) {
 
   $("#detail-content").innerHTML = `
     <h3>${esc(t.heading)}</h3>
-    ${statusPill(t.status)}
-    <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span>
+    <div class="ticket-status-line">
+      <span>${statusPill(t.status)} <span class="rc-cat">${esc(ticketTypeName(t.type_id))}</span></span>
+      ${isDraft ? "" : `<span class="ticket-due">Due Date: ${dueDateHtml(t, "Not specified")}</span>`}
+    </div>
     ${statusDesc(t.status) ? `<p class="status-hint">ℹ️ ${esc(statusDesc(t.status))}</p>` : ""}
     <dl class="detail-grid">
       <dt>${t.unit_id ? "Relates to a Unit:" : t.communal_area_id ? "Relates to a Communal Entity:" : "Relates to:"}</dt><dd>${esc(ticketRelatesDetail(t))}</dd>
@@ -4049,6 +4061,7 @@ async function openTicket(id) {
 
     ${reassignPanel(t, isDraft)}
     ${assignUserPanel(t, isDraft)}
+    ${dueDatePanel(t, isDraft)}
 
     <h4 style="margin:14px 0 0">Feedback</h4>
     ${feedbackComposer(t, isDraft)}
@@ -4118,6 +4131,33 @@ function assignUserPanel(t, isDraft) {
         : `<button type="button" class="btn ghost small" id="assign-me-btn" data-assign-ticket="${t.id}" data-assign-user="${me.id}">🙋 Assign to me</button>`}
     </div>
     <p id="assign-msg" class="login-msg"></p>`;
+}
+
+// Trustees: set, change or remove the due date (not on drafts).
+function dueDatePanel(t, isDraft) {
+  if (isDraft || !isTrustee()) return "";
+  return `
+    <div class="reassign-line">
+      <strong>Due date:</strong>
+      <input type="date" id="due-date-input" value="${esc(t.due_date || "")}" aria-label="Due date" />
+      <button type="button" class="reassign-go" id="due-date-btn" data-due-ticket="${t.id}" title="Save the due date" aria-label="Save the due date">→</button>
+      ${t.due_date ? `<button type="button" class="link-btn" id="due-date-clear" data-due-ticket="${t.id}" title="Remove the due date">Remove</button>` : ""}
+    </div>
+    <p id="due-msg" class="login-msg"></p>`;
+}
+
+async function setTicketDueDate(ticketId, date, btn) {
+  if (btn) btn.disabled = true;
+  setMsg("due-msg", "Saving…", true);
+  const { error } = await sb.rpc("set_ticket_due_date", { p_ticket: ticketId, p_date: date || null });
+  if (error) {
+    if (btn) btn.disabled = false;
+    setMsg("due-msg", "\u26a0\ufe0f " + (/set_ticket_due_date/.test(error.message) ? "Run supabase/42_ticket_due_date.sql first." : error.message), false);
+    return;
+  }
+  closeOverlays();   // done — close the ticket window (as for assigning a user)
+  await loadData();
+  refreshActiveView();
 }
 
 // Trustee's list: everyone currently in the ticket's role.
@@ -4334,6 +4374,12 @@ document.addEventListener("click", async (e) => {
     $("#feedback-photo-input").value = "";
     showFeedbackPhoto();
   }
+  if (e.target.id === "due-date-btn") {
+    const v = $("#due-date-input").value;
+    if (!v) setMsg("due-msg", "\u26a0\ufe0f Choose a date first, or use Remove.", false);
+    else setTicketDueDate(e.target.dataset.dueTicket, v, e.target);
+  }
+  if (e.target.id === "due-date-clear") setTicketDueDate(e.target.dataset.dueTicket, null, e.target);
   if (e.target.id === "assign-user-btn") assignTicketUser(e.target.dataset.assignTicket, $("#assign-user").value, e.target);
   if (e.target.id === "assign-me-btn") assignTicketUser(e.target.dataset.assignTicket, e.target.dataset.assignUser, e.target);
   if (e.target.id === "reassign-btn") {

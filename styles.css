@@ -700,3 +700,10 @@ span.new-comments { padding: 0 4px; }
 .helper-badge { display: inline-block; margin-left: 4px; font-size: 11px; font-weight: 600; color: #0f766e;
   background: #ccfbf1; border-radius: 999px; padding: 1px 7px; vertical-align: middle; white-space: nowrap; }
 .helper-icon { font-size: 12px; margin-left: 3px; }
+
+/* Due dates */
+.ticket-status-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ticket-due { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.ticket-due span { color: var(--ink); font-weight: 600; }
+.overdue, .ticket-due span.overdue { color: #dc2626 !important; font-weight: 700; }
+.modal .reassign-line input[type="date"] { width: auto; margin: 0; padding: 3px 6px; border-radius: 6px; font-size: 13px; }

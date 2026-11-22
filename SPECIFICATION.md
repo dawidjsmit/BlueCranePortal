@@ -126,6 +126,12 @@ something new (`garden_whats_new`).
 trigger), and each ticket stores `logged_by_name`. History shows the name (never
 "You"), then the role, then 🤝 for helper trustees.
 
+**Due date** (migration 42): optional `tickets.due_date`. Not on drafts; only
+trustees set, change or remove it, via RPC `set_ticket_due_date` (adds a 📅 history
+note; direct edits refused by trigger). Shown on the ticket view's status line
+(right) and as a Due Date column before Status on All Tickets, My Tickets and Needs
+my Feedback. Overdue (Sent / Busy / Waiting and due before today) is shown in red.
+
 **Helper trustees** (migration 40): a tick box on the Trustee registry record
 (`trustees.is_helper`). A helper is a full trustee with identical access; the app
 only shows a 🤝 icon next to their name: Trustees list, Users screen, ticket feedback history,
