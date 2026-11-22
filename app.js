@@ -359,10 +359,7 @@ const canManagePhotos = (unitId) => isTrustee() || amOwnerOf(unitId);
 const showInactive = () => isTrustee();
 
 function defaultView() {
-  if (isTrustee()) return "dashboard";
-  // Gardeners / service providers care about jobs assigned to their role.
-  if (isAssignee()) return "ticket-feedback";
-  return myUnitIds().size ? "myunits" : "dashboard";
+  return "dashboard"; // everyone starts on the Dashboard
 }
 
 // Navigation is organised into groups (main menus) with items (sub-menus).
@@ -606,6 +603,7 @@ async function deleteFile(path) {
 
 /* ---------- Views ---------- */
 function showView(name) {
+  if (name === "activity" || name === "aiengagement") sb.rpc("mark_screen_seen", { p_screen: name }).then(() => {}, () => {});
   $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   document.body.classList.remove("nav-open"); // close mobile drawer on navigate
   const render = {
@@ -681,30 +679,97 @@ function needsMyAction(t) {
   return false;
 }
 
+// The Dashboard shows activity and helps people get to it. Everything is clickable.
 function renderDashboard() {
-  const open = state.tickets.filter((t) => !["complete", "cancelled"].includes(t.status));
-  const mine = state.tickets.filter(needsMyAction);
+  const sentOn = state.tickets.filter((t) => t.status !== "create");           // drafts ignored
+  const active = sentOn.filter((t) => ["sent", "busy", "waiting"].includes(t.status));
+  const parked = sentOn.filter((t) => t.status === "parked");
+  const needs = state.tickets.filter(needsMyAction);
   const myDrafts = state.tickets.filter((t) => t.status === "create" && t.logged_by === me.id);
 
   $("#main").innerHTML = `
     <div id="dash-garden"></div>
+    <div id="dash-tickets"></div>
     <div class="stats-grid">
-      ${isTrustee() ? statCard(state.units.length, "Units", "") : ""}
-      ${statCard(open.length, "Open tickets", "open")}
-      ${statCard(mine.length, "Needs my feedback", "waiting")}
-      ${statCard(myDrafts.length, "My drafts", "progress")}
-    </div>
-    <div class="panel">
-      <div class="panel-head"><h2>⏳ Needs my feedback</h2>
-        ${canCreateTicket() ? `<button class="btn primary" data-new-ticket>+ Log a ticket</button>` : ""}
-      </div>
-      <div class="request-list">
-        ${mine.length ? mine.map(ticketCard).join("")
-          : `<div class="empty">🎉 Nothing waiting on you right now.</div>`}
-      </div>
-      ${mine.length ? `<div style="margin-top:12px"><button class="link-btn" data-view="ticket-feedback">View all →</button></div>` : ""}
+      ${dashCard(needs.length, "Needs my feedback", "waiting", 'data-view="ticket-feedback"', "Open Needs my Feedback")}
+      ${isTrustee() ? dashCard(active.length, "Active tickets", "open", 'data-dash="active"', "Sent, Busy or Waiting — opens All Tickets filtered on these")
+        + dashCard(parked.length, "Parked tickets", "parked", 'data-dash="parked"', "On hold — opens All Tickets filtered on Parked") : ""}
+      ${dashCard(myDrafts.length, "My drafts", "progress", 'data-dash="drafts"', "Saved but not sent — opens My Tickets filtered on drafts")}
+      ${isTrustee() ? dashCard('<span id="dash-act-n">…</span>', "New sign-ins", "activity", 'data-view="activity"', "Sign-ins by others since you last opened User activity")
+        + dashCard('<span id="dash-ai-n">…</span>', "New AI questions", "ai", 'data-view="aiengagement"', "Questions to Ask the Rules since you last opened AI engagement") : ""}
     </div>`;
   if (isTrustee() || me.role === "gardener") dashGardenNews();
+  dashTicketNews();
+  if (isTrustee()) dashScreenNews();
+}
+
+function dashCard(num, label, cls, attrs, tip) {
+  return `<button type="button" class="stat-card stat-link ${cls}" ${attrs} title="${esc(tip)}">
+    <div class="num">${num}</div><div class="label">${label} →</div></button>`;
+}
+
+// Trustees: new sign-ins and new AI questions since they last opened those screens.
+async function dashScreenNews() {
+  const { data, error } = await sb.rpc("screen_news");
+  [["#dash-act-n", "activity"], ["#dash-ai-n", "ai"]].forEach(([id, key]) => {
+    const e = $(id);
+    if (!e) return;
+    const n = error || !data ? null : Number(data[key]) || 0;
+    e.textContent = n === null ? "—" : n;
+    const card = e.closest ? e.closest(".stat-card") : null;
+    if (card) card.classList.toggle("has-news", !!n);
+  });
+}
+
+/* --- "What's new on tickets" --- */
+let ticketNews = null;   // { baseline, seen: {ticketId: when I last opened it}, comments: [{ticket_id, n}] }
+
+async function dashTicketNews() {
+  const { data, error } = await sb.rpc("ticket_news");
+  if (error || !data) return;   // nothing until migration 39 is run
+  ticketNews = { baseline: data.baseline, seen: data.seen || {}, comments: data.comments || [] };
+  renderDashTicketNews();
+}
+
+// Tickets that arrived in my Needs my Feedback since I last opened them.
+function newArrivals() {
+  if (!ticketNews) return [];
+  const base = ts(ticketNews.baseline);
+  return state.tickets
+    .filter((t) => needsMyAction(t) && ts(t.arrived_at) > Math.max(base, ts(ticketNews.seen[t.id])))
+    .sort((a, b) => ts(b.arrived_at) - ts(a.arrived_at));
+}
+
+function renderDashTicketNews() {
+  const box = $("#dash-tickets");
+  if (!box || !ticketNews) return;
+  const arrivals = newArrivals();
+  const comments = ticketNews.comments.map((c) => ({ t: state.tickets.find((x) => x.id === c.ticket_id), n: Number(c.n) || 0 }))
+    .filter((c) => c.t).sort((a, b) => b.n - a.n);
+  if (!arrivals.length && !comments.length) { box.innerHTML = ""; return; }
+  const CAP = 8;
+  const line = (t, extra) => `<button type="button" class="news-line" data-open-ticket="${t.id}">
+      <span><strong>${esc(t.heading)}</strong> <span class="muted tiny">· ${esc(ticketTargetLabel(t))}</span></span>${extra}</button>`;
+  const more = (n, view) => (n > CAP ? `<button type="button" class="link-btn" data-view="${view}">and ${n - CAP} more →</button>` : "");
+  box.innerHTML = `
+    <div class="panel whats-new-panel">
+      <div class="panel-head"><h2>🎟️ What's new on tickets</h2></div>
+      ${arrivals.length ? `<h4 class="news-h">🆕 New in Needs my Feedback (${arrivals.length})</h4>
+        ${arrivals.slice(0, CAP).map((t) => line(t, statusPill(t.status))).join("")}${more(arrivals.length, "ticket-feedback")}` : ""}
+      ${comments.length ? `<h4 class="news-h">💬 New comments on ${comments.length} ticket${comments.length === 1 ? "" : "s"}${isTrustee() ? "" : " you logged or are assigned to"}</h4>
+        ${comments.slice(0, CAP).map((c) => line(c.t, `<span class="new-comments">${c.n} new</span>`)).join("")}${more(comments.length, isTrustee() ? "ticket-all" : "ticket-mine")}` : ""}
+      <p class="muted tiny" style="margin:8px 0 0">Opening a ticket clears it from this list.</p>
+    </div>`;
+}
+
+// Opening a ticket marks it as seen (clears it from "What's new on tickets").
+function markTicketSeen(id) {
+  sb.rpc("mark_ticket_seen", { p_ticket: id }).then(() => {}, () => {});
+  if (ticketNews) {
+    ticketNews.seen[id] = new Date().toISOString();
+    ticketNews.comments = ticketNews.comments.filter((c) => c.ticket_id !== id);
+    renderDashTicketNews();
+  }
 }
 
 // Dashboard: "What's new" on the Gardening Report since my last visit.
@@ -831,9 +896,10 @@ function renderNeedsFeedback() {
 let allTicketsStatus = "";
 function renderAllTickets() {
   let list = state.tickets.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  if (allTicketsStatus) list = list.filter((t) => t.status === allTicketsStatus);
-  const statusOpts = ["", "create", "sent", "busy", "waiting", "complete", "cancelled", "parked"]
-    .map((s) => `<option value="${s}" ${s === allTicketsStatus ? "selected" : ""}${s && statusDesc(s) ? ` title="${esc(statusDesc(s))}"` : ""}>${s ? TICKET_STATUS_LABEL[s] : "All statuses"}</option>`).join("");
+  if (allTicketsStatus === "active") list = list.filter((t) => ["sent", "busy", "waiting"].includes(t.status));
+  else if (allTicketsStatus) list = list.filter((t) => t.status === allTicketsStatus);
+  const statusOpts = ["", "active", "create", "sent", "busy", "waiting", "complete", "cancelled", "parked"]
+    .map((s) => `<option value="${s}" ${s === allTicketsStatus ? "selected" : ""}${s && statusDesc(s) ? ` title="${esc(statusDesc(s))}"` : ""}>${s === "active" ? "Active (Sent, Busy, Waiting)" : s ? TICKET_STATUS_LABEL[s] : "All statuses"}</option>`).join("");
   $("#main").innerHTML = `
     <div class="panel">
       <div class="panel-head"><h2>📋 All Tickets</h2>
@@ -853,7 +919,7 @@ function ticketRow(t, showLogger = true) {
   return `<tr class="clickable-row">
     <td ${open} style="white-space:nowrap">${fmtDay(t.created_at)}</td>
     <td ${open}><strong>${esc(t.heading)}</strong></td>
-    <td ${open}>${esc(ticketTargetLabel(t))}</td>
+    <td ${open}>${ticketRelatesCell(t)}</td>
     <td ${open}>${esc(ticketTypeName(t.type_id))}</td>
     <td ${open}>${t.assigned_role ? esc(ROLE_LABEL[t.assigned_role] || t.assigned_role) : "—"}${t.assigned_user_name ? `<div class="muted tiny">👤 ${esc(t.assigned_user_name)}</div>` : ""}</td>
     ${showLogger ? `<td ${open}>${esc(loggerName(t))}</td>` : ""}
@@ -863,11 +929,22 @@ function ticketRow(t, showLogger = true) {
   </tr>`;
 }
 
+// "Relates to" in the ticket grids: General, Unit or Communal Entity, with the
+// specific unit / entity in small text underneath.
+function ticketRelatesCell(t) {
+  if (t.unit_id) return `Unit<div class="muted tiny">${esc(unitChoiceLabel(state.units.find((u) => u.id === t.unit_id) || { number: "?" }))}</div>`;
+  if (t.communal_area_id) {
+    const a = state.areas.find((x) => x.id === t.communal_area_id);
+    return `Communal Entity<div class="muted tiny">${esc(a ? areaFullLabel(a) : "—")}</div>`;
+  }
+  return "General";
+}
+
 // The ticket grid used on All Tickets, My Tickets and Needs my Feedback.
 function ticketGrid(list, { showLogger = true, empty = "No tickets match." } = {}) {
   const cols = showLogger ? 8 : 7;
   return `<div class="table-wrap"><table class="ticket-grid"><thead><tr>
-      <th>Logged</th><th>Heading</th><th>Unit / entity</th><th>Type</th><th>Assigned to Role</th>${showLogger ? "<th>Logged by</th>" : ""}<th>Status</th><th></th>
+      <th>Logged</th><th>Heading</th><th>Relates to</th><th>Type</th><th>Assigned to Role</th>${showLogger ? "<th>Logged by</th>" : ""}<th>Status</th><th></th>
     </tr></thead><tbody>
       ${list.length ? list.map((t) => ticketRow(t, showLogger)).join("") : `<tr><td colspan="${cols}" class="empty">${empty}</td></tr>`}
     </tbody></table></div>`;
@@ -3958,6 +4035,7 @@ async function openTicket(id) {
   if (input) input.addEventListener("change", (e) => onTicketPhotoChosen(e, id));
 
   // Load + render the conversation (feedback is only meaningful once sent).
+  markTicketSeen(id);
   await renderFeedbackThread(id);
 }
 
@@ -4118,6 +4196,7 @@ async function submitTicket(id) {
   // Create -> Sent, assigned to Trustees. Then close the ticket window.
   const { error } = await sb.from("tickets").update({ status: "sent", assigned_role: "trustee" }).eq("id", id);
   if (error) { setMsg("ticket-photo-msg", "\u26a0\ufe0f " + error.message, false); return; }
+  await sb.rpc("mark_ticket_seen", { p_ticket: id }).then(() => {}, () => {});
   closeOverlays();
   await loadData();
   refreshActiveView();
@@ -4458,6 +4537,12 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.editTicket) openTicketModal(state.tickets.find((x) => x.id === t.dataset.editTicket));
   if (t.dataset.submitTicket) submitTicket(t.dataset.submitTicket);
   if (t.dataset.deleteTicket) deleteTicket(t.dataset.deleteTicket);
+  const dash = t.closest("[data-dash]");
+  if (dash) {
+    const k = dash.dataset.dash;
+    if (k === "drafts") { myTicketsStatus = "create"; myTicketsSearch = ""; showView("ticket-mine"); }
+    else { allTicketsStatus = k; showView("ticket-all"); }
+  }
   const qf = t.closest("[data-my-status]");
   if (qf) { myTicketsStatus = qf.dataset.myStatus; renderMyTickets(); }
   const delRow = t.closest("[data-del-ticket-row]");
