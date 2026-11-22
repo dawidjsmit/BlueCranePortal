@@ -71,6 +71,7 @@ img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
   background: var(--sidebar); color: var(--sidebar-ink);
   padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;
   position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h));
+  height: calc(100dvh - var(--header-h)); /* phones: the visible height, not behind the browser bar */
   overflow-y: auto;
 }
 .sidebar-brand {
@@ -96,12 +97,13 @@ img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
 .nav-btn:hover { background: rgba(255,255,255,.07); color: #fff; }
 .nav-btn.active { background: var(--brand); color: #fff; font-weight: 600; }
 
-/* Account actions pinned to the bottom of the sidebar */
-.nav-footer {
-  margin-top: auto; padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,.08);
-  display: flex; flex-direction: column; gap: 2px;
+/* Account actions at the top of the menu, side by side */
+.nav-account {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  padding-bottom: 8px; margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
 }
+.nav-account .nav-btn { padding: 8px 10px; font-size: 13px; }
 
 .scrim { display: none; }
 
@@ -120,6 +122,7 @@ img.logo.big { width: 72px; height: 72px; margin: 0 auto 8px; }
   /* Sidebar becomes an off-canvas drawer */
   .sidebar {
     position: fixed; top: 0; left: 0; height: 100vh; z-index: 50;
+    height: 100dvh; padding-bottom: calc(16px + env(safe-area-inset-bottom));
     transform: translateX(-100%); transition: transform .25s ease;
     box-shadow: var(--shadow-lg);
   }
@@ -714,3 +717,6 @@ span.new-comments { padding: 0 4px; }
 .ticket-actions-block .reassign-line { margin-top: 8px; }
 #assign-msg:empty, #due-msg:empty, #reassign-msg:empty, #feedback-msg:empty { display: none; }
 .fb-history-title { margin-top: 16px; }
+
+/* Dashboard: cards in rows of two */
+.stats-grid.stats-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 14px; }
